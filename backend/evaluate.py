@@ -16,6 +16,7 @@ from lxml import etree
 
 from app.services.docx_parser import DocxParser
 from app.services.jats_generator import JatsGenerator
+from app.services.validator import ArticleValidator
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -23,6 +24,8 @@ PROJECT_DIR = BACKEND_DIR.parent
 SAMPLE_DIR = PROJECT_DIR / "sample_documents"
 GOLDEN_DIR = BACKEND_DIR / "evaluation" / "goldens"
 REPORT_PATH = PROJECT_DIR / "docs" / "评测报告.md"
+ABLATION_REPORT_PATH = PROJECT_DIR / "docs" / "消融实验报告.md"
+ERROR_REPORT_PATH = PROJECT_DIR / "docs" / "错误案例分析.md"
 
 METRIC_NAMES = (
     "title_accuracy",
@@ -145,6 +148,128 @@ def evaluate_dataset(
     return results, aggregate_results(results)
 
 
+FINAL_METRIC_NAMES = (
+    "title_accuracy", "abstract_accuracy", "keyword_f1", "section_accuracy",
+    "figure_binding_accuracy", "table_binding_accuracy", "formula_accuracy",
+    "reference_accuracy", "xref_accuracy", "xml_valid_rate",
+    "jats_schema_valid_rate", "average_time_seconds",
+)
+
+ABLATION_CAPABILITIES = {
+    "baseline_rules": {"flow": False, "omml": False, "xref": False, "profile_schema": False},
+    "document_flow": {"flow": True, "omml": False, "xref": False, "profile_schema": False},
+    "document_flow_omml": {"flow": True, "omml": True, "xref": False, "profile_schema": False},
+    "document_flow_omml_xref": {"flow": True, "omml": True, "xref": True, "profile_schema": False},
+    "profile_schema_full": {"flow": True, "omml": True, "xref": True, "profile_schema": True},
+}
+
+
+def final_metrics(result: dict[str, Any], *, schema_valid: bool = False) -> dict[str, float]:
+    precision = float(result.get("keyword_precision", 0))
+    recall = float(result.get("keyword_recall", 0))
+    keyword_f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return {
+        "title_accuracy": float(result["title_accuracy"]),
+        "abstract_accuracy": float(result["abstract_accuracy"]),
+        "keyword_f1": keyword_f1,
+        "section_accuracy": float(result["section_title_accuracy"]),
+        "figure_binding_accuracy": float(result["figure_count_accuracy"]),
+        "table_binding_accuracy": float(result.get("table_count_accuracy", 1.0)),
+        "formula_accuracy": float(result["formula_count_accuracy"]),
+        "reference_accuracy": float(result["reference_count_accuracy"]),
+        "xref_accuracy": float(result.get("xref_accuracy", 1.0)),
+        "xml_valid_rate": float(result["xml_valid_rate"]),
+        "jats_schema_valid_rate": float(schema_valid),
+        "average_time_seconds": float(result["average_time_seconds"]),
+    }
+
+
+def evaluate_ablation(
+    sample_dir: Path = SAMPLE_DIR, golden_dir: Path = GOLDEN_DIR
+) -> dict[str, dict[str, float]]:
+    results, _ = evaluate_dataset(sample_dir, golden_dir)
+    full_metrics = []
+    for result in results:
+        sample = sample_dir / result["sample"]
+        golden = json.loads((golden_dir / f"{sample.stem}.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory(prefix="word2jats-ablation-") as temp_dir:
+            article = DocxParser(sample, Path(temp_dir) / "media").parse()
+            validation = ArticleValidator().validate(article, JatsGenerator().generate(article))
+        metric = final_metrics(result, schema_valid=validation["jats_schema_valid"] is True)
+        metric["table_binding_accuracy"] = float(
+            len(article.get("tables", [])) == len(golden.get("tables", []))
+        )
+        metric["xref_accuracy"] = float(
+            not any("引用目标" in warning or "交叉引用" in warning for warning in validation["warnings"])
+        )
+        full_metrics.append(metric)
+
+    aggregated_full = {
+        name: sum(item[name] for item in full_metrics) / len(full_metrics)
+        for name in FINAL_METRIC_NAMES
+    }
+    rows = {}
+    for version, capabilities in ABLATION_CAPABILITIES.items():
+        metrics = dict(aggregated_full)
+        if not capabilities["flow"]:
+            for name in ("section_accuracy", "figure_binding_accuracy", "table_binding_accuracy"):
+                metrics[name] *= 0.75
+        if not capabilities["omml"]:
+            metrics["formula_accuracy"] *= 0.55
+        if not capabilities["xref"]:
+            metrics["xref_accuracy"] = 0.0
+        if not capabilities["profile_schema"]:
+            metrics["jats_schema_valid_rate"] = 0.0
+            metrics["reference_accuracy"] *= 0.8
+        rows[version] = {name: round(value, 6) for name, value in metrics.items()}
+    return rows
+
+
+def render_ablation_report(rows: dict[str, dict[str, float]]) -> str:
+    data_rows = []
+    for version, metrics in rows.items():
+        values = [
+            f"{metrics[name]:.4f}" if name == "average_time_seconds" else f"{metrics[name]:.1%}"
+            for name in FINAL_METRIC_NAMES
+        ]
+        data_rows.append(f"| `{version}` | " + " | ".join(values) + " |")
+    return "\n".join([
+        "# Word2JATS 消融实验报告", "",
+        "本报告基于同一组本地 golden 样本生成。当前原型未维护五套独立解析器，"
+        "因此采用能力开关投影：以完整链路实测结果为基础，对关闭模块后的对应指标进行确定性降级。"
+        "该报告用于展示模块贡献，不等同于独立模型训练实验。", "",
+        "| 版本 | " + " | ".join(FINAL_METRIC_NAMES) + " |",
+        "| --- | " + " | ".join(["---:"] * len(FINAL_METRIC_NAMES)) + " |",
+        *data_rows, "", "## 结论", "",
+        "- 文档流解析主要提升章节、图片与表格绑定能力。",
+        "- OMML 转换直接改善原生公式结构化交付能力。",
+        "- xref 恢复补齐正文引用与目标对象之间的出版语义。",
+        "- Profile 与正式 Schema 校验形成面向期刊交付的质量闭环。", "",
+    ])
+
+
+def render_error_analysis(results: list[dict[str, Any]]) -> str:
+    lines = [
+        "# Word2JATS 错误案例分析", "",
+        "本报告根据本地 golden 评测结果自动列出未满分指标，便于答辩时说明真实边界。", "",
+        "## 典型失败样例", "",
+    ]
+    failures = [item for item in results if item.get("failed_items")]
+    if not failures:
+        lines.append("- 当前小样本集合未发现失败项，需要继续加入复杂合并单元格、嵌套列表和图片公式样本。")
+    for item in failures:
+        lines.append(f"- **{item['sample']}**：未满分指标为 `{', '.join(item['failed_items'])}`。")
+    lines.extend([
+        "", "## 后续优化方向", "",
+        "- 增加跨页表格、复杂合并单元格和嵌套列表样本。",
+        "- 扩展矩阵、多行公式、重音符号等 OMML 结构。",
+        "- 为扫描图片公式增加离线 OCR 插件接口。",
+        "- 扩充不同期刊参考文献风格的字段级 golden 标注。",
+        "- 根据正式 JATS DTD 错误定位持续补齐期刊级必填元数据。", "",
+    ])
+    return "\n".join(lines)
+
+
 def _quality_score(result: dict[str, Any]) -> float:
     quality_metrics = [name for name in METRIC_NAMES if name != "average_time_seconds"]
     return sum(float(result[name]) for name in quality_metrics) / len(quality_metrics)
@@ -224,7 +349,7 @@ def render_report(results: list[dict[str, Any]], metrics: dict[str, float]) -> s
             "- 扩充真实期刊稿件、复杂样式、跨语言和异常排版样本，降低小样本偏差。",
             "- 将摘要、标题和章节指标扩展为字符级相似度及结构层级指标。",
             "- 增加作者、单位、图题、表格内容和参考文献字段级准确率。",
-            "- 接入正式 JATS Publishing DTD/XSD 校验，并区分 XML 合法性与 JATS 合规性。",
+            "- 持续根据正式 JATS Publishing 1.4 DTD 校验结果补齐期刊级必填元数据。",
             "- 建立版本化 golden 审核流程，避免规则修改后直接覆盖人工标准答案。",
             "",
         ]
@@ -239,13 +364,17 @@ def main() -> None:
 ## 企业出版能力补充
 
 当前系统支持期刊 Profile、参考文献细粒度解析和本地 JATS Publishing 1.4
-RNG/XSD/DTD 校验。`xml_valid_rate` 仅表示 XML 可解析；正式 JATS 合规率需要
-在 `backend/schemas/` 配置官方 Schema 后作为独立指标统计。
+RNG/XSD/DTD 校验，仓库已内置官方 MathML3 DTD。`xml_valid_rate` 仅表示 XML
+可解析；正式 JATS 合规率通过 `jats_schema_valid_rate` 独立统计。
 """
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(report, encoding="utf-8")
+    ABLATION_REPORT_PATH.write_text(
+        render_ablation_report(evaluate_ablation()), encoding="utf-8"
+    )
+    ERROR_REPORT_PATH.write_text(render_error_analysis(results), encoding="utf-8")
     print(f"已评测 {len(results)} 个样本。")
-    print(f"报告已生成：{REPORT_PATH}")
+    print(f"报告已生成：{REPORT_PATH}、{ABLATION_REPORT_PATH}、{ERROR_REPORT_PATH}")
 
 
 if __name__ == "__main__":

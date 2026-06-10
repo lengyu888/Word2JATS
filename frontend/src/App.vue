@@ -8,7 +8,7 @@ import ValidationPanel from './components/ValidationPanel.vue'
 import CorrectionEditor from './components/CorrectionEditor.vue'
 import BatchResults from './components/BatchResults.vue'
 import QualityReport from './components/QualityReport.vue'
-import { batchConvertDocuments, exportPackage, generateXml, getProfiles } from './api/convert'
+import { batchConvertDocuments, exportPackage, generateXml, getDemoDocument, getProfiles } from './api/convert'
 
 const loading = ref(false)
 const regenerating = ref(false)
@@ -16,6 +16,7 @@ const result = ref(null)
 const batchResults = ref([])
 const activeTab = ref('json')
 const profiles = ref([])
+const exportStatuses = ref({})
 const sectionCount = computed(() => result.value?.article.sections.length || 0)
 const referenceCount = computed(() => result.value?.article.references.length || 0)
 
@@ -37,6 +38,19 @@ async function convert(files, profile) {
     ElMessage.success(`批量转换完成：${batch.results.filter((item) => item.status === 'success').length}/${batch.results.length} 成功`)
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '转换失败，请检查后端服务和文档格式')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadDemo(profile = 'default') {
+  loading.value = true
+  try {
+    const file = await getDemoDocument()
+    await convert([file], profile)
+    ElMessage.success('演示稿已加载并完成转换')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '演示数据加载失败')
   } finally {
     loading.value = false
   }
@@ -64,6 +78,7 @@ function downloadXml(item) {
 }
 
 async function downloadPackage(item) {
+  exportStatuses.value[item.filename] = '生成中'
   try {
     const blob = await exportPackage({
       filename: item.filename,
@@ -71,9 +86,12 @@ async function downloadPackage(item) {
       xml: item.xml,
       media_paths: item.media_paths || [],
       validation: item.validation,
+      quality_report: item.quality_report,
     })
     downloadBlob(blob, `${item.filename.replace(/\.docx$/i, '') || 'article'}-word2jats.zip`)
+    exportStatuses.value[item.filename] = '已导出'
   } catch (error) {
+    exportStatuses.value[item.filename] = '导出失败'
     ElMessage.error(error.response?.data?.detail || 'ZIP 结果包生成失败')
   }
 }
@@ -87,6 +105,7 @@ async function regenerate(article) {
       article,
       xml: generated.xml,
       validation: generated.validation,
+      quality_report: generated.quality_report,
     }
     batchResults.value = batchResults.value.map((item) => (
       item.filename === result.value.filename ? result.value : item
@@ -121,10 +140,23 @@ async function regenerate(article) {
         <p>无需商业 API，使用可解释的规则算法从 Word 稿件中提取出版语义，并生成面向 JATS 的 XML。</p>
       </section>
 
-      <UploadPanel :loading="loading" :profiles="profiles" @convert="convert" />
+      <section class="capability-grid">
+        <article v-for="(card, index) in [
+          ['01', 'Word 文档流解析', '按 document.xml 真实顺序恢复段落、图片、表格与公式。'],
+          ['02', 'JATS Schema 校验', '使用本地正式 JATS Publishing 1.4 DTD 定位交付问题。'],
+          ['03', 'OMML → MathML', '保留原生公式并生成 MathML、LaTeX 与文本回退。'],
+          ['04', '图表公式引用恢复', '将正文引用转换为可校验的 JATS xref。'],
+          ['05', '批量转换与 ZIP 交付', '逐篇质量评分并交付 XML、JSON、报告和媒体资源。'],
+        ]" :key="card[0]">
+          <span>{{ card[0] }}</span><h3>{{ card[1] }}</h3><p>{{ card[2] }}</p>
+        </article>
+      </section>
+
+      <UploadPanel :loading="loading" :profiles="profiles" @convert="convert" @demo="loadDemo" />
       <BatchResults
         v-if="batchResults.length"
         :results="batchResults"
+        :export-statuses="exportStatuses"
         @select="selectResult"
         @download-xml="downloadXml"
         @download-package="downloadPackage"
@@ -153,7 +185,7 @@ async function regenerate(article) {
           <el-tab-pane label="结构化 JSON" name="json"><JsonViewer :data="result.article" /></el-tab-pane>
           <el-tab-pane label="JATS XML" name="xml"><XmlViewer :xml="result.xml" /></el-tab-pane>
           <el-tab-pane label="校验结果" name="validation"><ValidationPanel :validation="result.validation" /></el-tab-pane>
-          <el-tab-pane label="质量报告" name="quality"><QualityReport :validation="result.validation" /></el-tab-pane>
+          <el-tab-pane label="质量报告" name="quality"><QualityReport :report="result.quality_report" /></el-tab-pane>
         </el-tabs>
       </section>
 
@@ -181,6 +213,7 @@ main { padding: 60px 0 80px; }
 .hero { display: grid; grid-template-columns: 1.3fr .7fr; align-items: end; gap: 50px; margin-bottom: 42px; }
 .hero h2 { margin: 14px 0 0; font: 600 clamp(40px, 6vw, 78px)/1.12 Georgia, "Noto Serif SC", serif; letter-spacing: -.045em; }
 .hero h2 em { color: var(--blue); font-weight: inherit; }.hero p { margin: 0 0 8px; padding-left: 18px; border-left: 2px solid #d28d24; color: #66716d; line-height: 1.9; font-size: 14px; }
+.capability-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: -8px 0 30px; }.capability-grid article { min-height: 150px; padding: 18px; border: 1px solid var(--line); background: rgba(255,254,249,.72); transition: transform .2s, background .2s; }.capability-grid article:hover { transform: translateY(-4px); background: #fffef9; }.capability-grid span { color: #d28d24; font: 17px Georgia, serif; }.capability-grid h3 { margin: 18px 0 8px; font: 16px Georgia, "Noto Serif SC", serif; }.capability-grid p { margin: 0; color: #75807c; font-size: 11px; line-height: 1.7; }
 .results { margin-top: 64px; }
 .result-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 20px; }
 .result-heading h2 { margin: 9px 0 0; font: 600 30px Georgia, "Noto Serif SC", serif; }
@@ -190,6 +223,6 @@ main { padding: 60px 0 80px; }
 .empty-state { display: flex; align-items: center; gap: 24px; margin-top: 64px; padding: 32px; border: 1px dashed #b8b5aa; color: #8a918d; }.empty-state span { font: 40px Georgia, serif; color: #beb9ab; }.empty-state p { margin: 0; font-size: 13px; }
 footer { padding: 20px 0 32px; border-top: 1px solid var(--line); color: #89908d; font-size: 9px; letter-spacing: .17em; }
 @media (max-width: 850px) {
-  .page-shell { padding: 0 18px; }.masthead { grid-template-columns: 50px 1fr; }.system-state { display: none; }.hero { grid-template-columns: 1fr; }.hero h2 { font-size: 45px; }.result-heading { align-items: start; flex-direction: column; gap: 20px; }.metrics { width: 100%; justify-content: space-between; }
+  .page-shell { padding: 0 18px; }.masthead { grid-template-columns: 50px 1fr; }.system-state { display: none; }.hero { grid-template-columns: 1fr; }.hero h2 { font-size: 45px; }.capability-grid { grid-template-columns: 1fr 1fr; }.result-heading { align-items: start; flex-direction: column; gap: 20px; }.metrics { width: 100%; justify-content: space-between; }
 }
 </style>

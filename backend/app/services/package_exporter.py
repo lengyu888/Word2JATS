@@ -17,8 +17,11 @@ class PackageExporter:
         xml: str,
         media_paths: list[str],
         validation: dict[str, Any],
+        quality_report: dict[str, Any] | None = None,
     ) -> bytes:
         files = ["article.xml", "article.json", "validation_report.md", "media/"]
+        if quality_report:
+            files.append("quality_report.json")
         media_files = self._resolve_media_files(media_paths)
         files.extend(f"media/{name}" for name, _ in media_files)
         files.append("manifest.json")
@@ -31,6 +34,7 @@ class PackageExporter:
                 "error_count": len(validation.get("errors", [])),
                 "warning_count": len(validation.get("warnings", [])),
             },
+            "quality_score": (quality_report or {}).get("total_score"),
         }
 
         output = BytesIO()
@@ -42,6 +46,11 @@ class PackageExporter:
             archive.writestr(
                 "validation_report.md", self._validation_report(validation)
             )
+            if quality_report:
+                archive.writestr(
+                    "quality_report.json",
+                    json.dumps(quality_report, ensure_ascii=False, indent=2),
+                )
             archive.writestr("media/", b"")
             for archive_name, path in media_files:
                 archive.write(path, f"media/{archive_name}")

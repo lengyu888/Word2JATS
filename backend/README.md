@@ -4,7 +4,7 @@
 
 `POST /api/convert` 和 `POST /api/batch-convert` 接受 multipart 字段 `profile`，可用值由 `GET /api/profiles` 返回。配置文件位于 `backend/profiles/*.yaml`，可定义期刊元数据、标题样式、摘要/关键词标记、图表题正则、参考文献风格和默认许可。
 
-正式校验支持本地 RNG、XSD 或 DTD。请将官方 JATS Publishing 1.4 完整发行包放入 `backend/schemas/`；如目录中存在多个模块，启动前设置 `JATS_SCHEMA_PATH` 指向主 schema。未配置时返回 `jats_schema_valid: null`，不会宣称正式合规。
+正式校验支持本地 RNG、XSD 或 DTD。仓库已在 `backend/schemas/` 内置官方 JATS Publishing 1.4 MathML3 DTD 完整发行包并自动发现主 DTD；如需切换其他本地 Schema，可设置 `JATS_SCHEMA_PATH` 指向主文件。未配置可用 Schema 时返回 `jats_schema_valid: null`，不会宣称正式合规。
 
 为保持旧接口兼容，顶层 `passed` 表示 XML 合法且业务规则通过；正式 JATS
 合规性必须单独查看 `jats_schema_valid` 与 `schema_errors`。
@@ -31,6 +31,14 @@ Python 3.10+、FastAPI、python-docx、lxml、Pydantic、pytest。
 
 ## 安装与启动
 
+项目根目录一键启动：
+
+```bash
+docker compose up --build
+```
+
+请先启动 Docker Desktop（Linux containers）；前端入口为 `http://localhost:8080`。
+
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -45,6 +53,7 @@ uvicorn app.main:app --reload --port 8000
 - 批量转换接口：`POST http://127.0.0.1:8000/api/batch-convert`
 - 人工校正后生成 XML：`POST http://127.0.0.1:8000/api/generate-xml`
 - ZIP 结果包导出：`POST http://127.0.0.1:8000/api/export-package`
+- 内置演示稿下载：`GET http://127.0.0.1:8000/api/demo-document`
 
 转换接口使用 `multipart/form-data`，字段名为 `file`，仅接受 `.docx`。
 
@@ -64,6 +73,7 @@ curl -F "files=@paper-1.docx" -F "files=@paper-2.docx" http://127.0.0.1:8000/api
 article.xml
 article.json
 validation_report.md
+quality_report.json
 manifest.json
 media/
 ```
@@ -94,8 +104,9 @@ Article 支持 DOI、文章类型、语言、期刊名称、期刊 ID、出版�
 3. `OmmlConverter` 将常见 Word 原生公式结构转换为 Presentation MathML 和基础 LaTeX。
 4. `DocxParser` 基于节点流提取元数据，并绑定章节、图片、图题、表格、表题、列表、OMML/规则公式和参考文献。
 5. `XrefResolver` 识别正文中的图、表、公式和参考文献引用，`JatsGenerator` 使用 lxml 构建带混合内容 `xref` 的 XML。
-6. `ArticleValidator` 执行基础 JATS 结构、出版质量及交叉引用目标校验。
-7. 请求结束后清理临时文件。
+6. `ArticleValidator` 执行业务规则、XML、正式 JATS Schema 及交叉引用目标校验。
+7. `QualityScorer` 生成 0-100 总分、七项分项得分和可定位修复建议。
+8. 请求结束后清理临时文件。
 
 ## 测试
 
@@ -119,7 +130,7 @@ cd backend
 python evaluate.py
 ```
 
-脚本会运行 `DocxParser`、生成并解析 JATS XML，计算各项准确率与平均处理时间，并将 Markdown 报告写入 `docs/评测报告.md`。评测不启动 Web 服务，也不调用外部 API。
+脚本会运行 `DocxParser`、生成并解析 JATS XML，计算各项准确率与平均处理时间，并写入 `docs/评测报告.md`、`docs/消融实验报告.md` 与 `docs/错误案例分析.md`。评测不启动 Web 服务，也不调用外部 API。
 
 ## 校验规则
 
@@ -127,27 +138,20 @@ python evaluate.py
 
 非阻断性警告包括：作者、单位或参考文献为空，图片缺少图题，表格缺少表题或数据行，公式内容为空或 OMML 无法转换为 MathML，作者缺少 ORCID，章节没有正文段落，关键词少于 3 个，以及正文交叉引用 `rid` 指向不存在的 XML `id`。警告不会令 `passed` 变为 `false`，但建议在正式出版前人工复核。
 
-## 当前限制与扩展方向
+## 决赛展示流程
+
+1. 使用 `/api/demo-document` 获取仓库内置演示稿并调用批量转换。
+2. 展示 `article/xml/validation/quality_report` 四类交付数据。
+3. 人工修改 Article JSON 后调用 `/api/generate-xml`，展示质量分和 Schema 错误变化。
+4. 调用 `/api/export-package` 下载包含 XML、JSON、验证报告、质量报告和媒体资源的 ZIP。
+5. 运行 `python evaluate.py` 生成评测、消融实验和错误案例分析报告。
+
+## 当前真实限制
 
 - 标题、作者和单位使用启发式评分/关键词识别，复杂稿件可能需要更精细的样式映射。
-- 图片保存到 `backend/temp/<转换ID>/media`，JSON 和 XML 使用相对路径。
-- 文档流解析器识别普通段落、标题段落、章节、图题、表题、列表、含 `w:drawing` 的图片段落、含 `m:oMath/m:oMathPara` 的公式段落和 `w:tbl` 表格。
-- 图片通过 `word/_rels/document.xml.rels` 的 `r:embed` 映射到 `word/media`，不再依赖 ZIP 媒体文件名排序推断位置。
-- 图题支持 `图1`、`图 1`、`图1-1`、`Fig. 1` 和 `Figure 1` 等形式，并按出现顺序与图片绑定。
-- 图片和图题数量不一致时不会报错：多余图片 caption 为空，多余图题生成为无 graphic 的 caption-only figure。
-- Word 表格输出为 `tables` 数组，首行作为 JATS `thead`，其余行作为 `tbody`；支持 `表1`、`表 1`、`Table 1` 表题并按出现顺序绑定。
-- 表格和表题数量不一致时不会报错：多余表格 caption 为空，多余表题生成为 rows 为空的 table 对象。
-- 图片、表格和公式在节点出现时记录当前章节，题注只与同章节对象绑定，避免跨章节误关联。
-- 正文交叉引用支持 `图1/图 1/Fig. 1/Figure 1`、`表1/表 1/Table 1`、`式（1）/公式（1）/Eq. (1)` 和 `[1]/[1,2]/[1-3]`。
-- 一个段落可以生成多个 `xref`；参考文献组合与范围引用的 `rid` 使用空格分隔的 IDREFS，例如 `rid="ref1 ref2 ref3"`。
-- Formula 输出 `id/content/omml/mathml/latex/type/section_index`；旧版 `plain_text` 与 `tex` 输入仍会被兼容归一化。
-- OMML 基础转换支持分数、上下标、根号、求和、括号、普通变量和运算符，并生成 JATS `disp-formula/alternatives/mml:math/tex-math`。
-- 基础规则公式继续使用短段落、数学符号/关键词及 Equation/公式样式识别，并作为 `tex-math` 回退输出。
-- 参考文献识别支持“参考文献”与 `References` 标题，以及 `[1]`、`1.`、`（1）` 编号；编号拆入 `label`，清理后的引文保存在 `raw`，XML 输出 `ref-list/ref/label/mixed-citation`。
-- 后续可扩展矩阵、多行公式、重音符号等 OMML 结构，以及 LaTeX-OCR 和 Mathpix；当前版本不调用商业公式识别 API。
-- 参考文献尚未拆分为作者、文章题名、期刊名、年份等细粒度 JATS 元素。
-- XML 根节点输出 JATS 1.4、语言与文章类型属性，front 包含 `journal-meta` 和 `article-meta`，并支持 DOI、出版日期、学科及作者-单位 xref。
-- 当前输出更接近 JATS Publishing 结构，但校验仍为原型级节点检查，尚未使用正式 JATS Publishing DTD/XSD。
-- 当前是 JATS 思路的 XML，不包含正式 DTD/XSD 校验。
-- 可扩展图片静态资源接口、标准 JATS 校验、复杂合并单元格处理和异步任务队列。
+- 暂不支持矩阵、多行公式、复杂重音符号等全部 OMML 结构；图片公式尚无 OCR，当前版本不调用商业 API。
+- 参考文献支持启发式拆分作者、文章题名、来源、年份、卷期页码、DOI 与出版类型，并在可用时生成 `element-citation`；复杂或非标准引文的字段准确率仍需人工复核。
+- 当前已同时执行原型级业务/节点检查和正式 JATS Publishing 1.4 DTD 校验；生成结果可能因缺少 ISSN、完整贡献者信息或特定期刊必填元数据而未通过正式 DTD。
+- 复杂合并单元格、跨页表格、嵌套列表和期刊专属必填字段仍需增强。
 - 当前批量转换为请求内顺序处理；生产环境可扩展任务队列、并发限制、进度查询、鉴权和临时结果定期清理。
+- 当前质量评分为确定性的业务启发式评分，仍需结合出版社规则和人工终审。

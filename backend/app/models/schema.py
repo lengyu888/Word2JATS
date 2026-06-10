@@ -131,12 +131,28 @@ class ValidationResult(BaseModel):
     schema_file: str = ""
     business_rules: dict = Field(default_factory=dict)
 
+class QualityIssue(BaseModel):
+    level: str
+    module: str
+    location: str
+    message: str
+    suggestion: str
+
+
+class QualityReport(BaseModel):
+    total_score: int
+    grade: str
+    scores: dict[str, int] = Field(default_factory=dict)
+    issues: list[QualityIssue] = Field(default_factory=list)
+    summary: dict[str, int] = Field(default_factory=dict)
+
 
 class ConvertResponse(BaseModel):
     success: bool
     article: Article
     xml: str
     validation: ValidationResult
+    quality_report: QualityReport | None = None
 
 
 class GenerateXmlRequest(BaseModel):
@@ -147,6 +163,7 @@ class GenerateXmlResponse(BaseModel):
     success: bool
     xml: str
     validation: ValidationResult
+    quality_report: QualityReport | None = None
 
 
 class BatchConvertItem(BaseModel):
@@ -155,6 +172,7 @@ class BatchConvertItem(BaseModel):
     article: Article | None = None
     xml: str = ""
     validation: ValidationResult | None = None
+    quality_report: QualityReport | None = None
     media_paths: list[str] = Field(default_factory=list)
     error: str = ""
 
@@ -170,3 +188,4 @@ class ExportPackageRequest(BaseModel):
     xml: str
     media_paths: list[str] = Field(default_factory=list)
     validation: ValidationResult
+    quality_report: QualityReport | None = None

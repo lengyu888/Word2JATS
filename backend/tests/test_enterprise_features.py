@@ -4,6 +4,7 @@ from app.services.jats_generator import JatsGenerator
 from app.services.jats_schema_validator import JatsSchemaValidator
 from app.services.profile_loader import ProfileLoader
 from app.services.reference_parser import ReferenceParser
+from app.services.quality_scorer import QualityScorer
 from app.services.validator import ArticleValidator
 
 
@@ -84,3 +85,28 @@ def test_generator_emits_element_citation_for_structured_reference():
     assert '<element-citation publication-type="journal">' in xml
     assert "<article-title>Structured publishing</article-title>" in xml
     assert '<pub-id pub-id-type="doi">10.1234/demo.1</pub-id>' in xml
+
+
+def test_quality_scorer_returns_scores_and_located_issues():
+    article = {
+        "title": "Test", "abstract": "Abstract", "keywords": ["JATS"],
+        "authors": [], "affiliations": [], "journal_title": "", "publisher_name": "",
+        "sections": [{"title": "Intro", "paragraphs": []}],
+        "figures": [{"id": "fig1", "caption": "", "path": "image.png"}],
+        "tables": [], "formulas": [], "references": [], "lists": [],
+    }
+    validation = {
+        "xml_well_formed": True, "jats_schema_valid": False,
+        "schema_errors": ["journal-meta requires issn"], "warnings": [],
+        "xref_checks": [], "errors": [],
+    }
+
+    report = QualityScorer().score(article, validation)
+
+    assert 0 <= report["total_score"] <= 100
+    assert set(report["scores"]) == set(QualityScorer.WEIGHTS)
+    assert report["issues"]
+    assert all(
+        {"level", "module", "location", "message", "suggestion"} <= set(issue)
+        for issue in report["issues"]
+    )

@@ -5,7 +5,7 @@
 - 上传时可选择 `default`、中文期刊、英文期刊或 IMR 期刊 Profile；Profile 会影响摘要/关键词/图表题识别，并补齐期刊元数据。
 - 参考文献会保留 `raw` 与 `mixed_citation`，并尝试解析作者、题名、来源、年份、卷期页码、DOI、出版类型和置信度；有结构化字段时输出 JATS `element-citation`。
 - 校验结果分为 XML 合法性、正式 JATS Schema、业务规则和引用完整性。正式 Schema 未配置时明确返回 `jats_schema_valid: null`。
-- 官方 JATS Publishing 1.4 文件不内置在仓库中。请将完整 RNG/XSD/DTD 发行包放入 `backend/schemas/`，多模块发行包可通过 `JATS_SCHEMA_PATH` 指定主文件。
+- 仓库已内置官方 JATS Publishing 1.4 MathML3 DTD 完整发行包，系统会从 `backend/schemas/` 自动发现主 DTD；也可通过 `JATS_SCHEMA_PATH` 指定其他本地 RNG/XSD/DTD 主文件。
 
 Word2JATS 是一个面向学术出版的智能结构化转换原型。用户上传 `.docx` 学术论文后，系统使用可解释的规则算法提取文章结构，生成中间 JSON、JATS 风格 XML，并执行基础完整性校验。
 
@@ -16,6 +16,14 @@ Word2JATS 是一个面向学术出版的智能结构化转换原型。用户上�
 - 测试：pytest、FastAPI TestClient
 
 ## 快速启动
+
+Docker 一键启动：
+
+```bash
+docker compose up --build
+```
+
+请先启动 Docker Desktop（Linux containers）。启动后访问 `http://localhost:8080`，前端容器通过 Nginx 将 `/api` 请求转发到后端。
 
 后端：
 
@@ -59,14 +67,14 @@ python scripts/generate_sample_docx.py
 
 ## 本地评测
 
-项目在 `backend/evaluation/goldens` 保存与测试 Word 同名的人工标注 JSON。运行以下命令可批量解析样本、计算准确率和耗时，并更新 `docs/评测报告.md`：
+项目在 `backend/evaluation/goldens` 保存与测试 Word 同名的人工标注 JSON。运行以下命令可批量解析样本、计算准确率和耗时，并更新 `docs/评测报告.md`、`docs/消融实验报告.md` 与 `docs/错误案例分析.md`：
 
 ```bash
 cd backend
 python evaluate.py
 ```
 
-评测指标包括标题、摘要、关键词 precision/recall、章节标题、图片/公式/参考文献数量准确率、XML 合法率和平均处理耗时。整个评测流程仅使用本地文件，不依赖外部 API。
+评测指标覆盖元数据、章节、图表绑定、公式、参考文献、交叉引用、XML 合法率、JATS Schema 合规率和平均处理耗时。整个评测流程仅使用本地文件，不依赖外部 API。
 
 ## 当前支持
 
@@ -86,6 +94,8 @@ python evaluate.py
 - 支持多文件批量转换，逐篇展示成功、失败、警告数和错误数
 - 支持下载单篇 XML，以及包含 XML、JSON、校验报告、媒体文件和 manifest 的 ZIP 结果包
 - 支持人工校正结构化数据并重新生成 XML
+- 基于元数据、结构、Schema、图表、公式、参考文献和交叉引用生成 0-100 质量分、问题定位与修复建议
+- 提供内置演示稿一键加载、首页能力卡片、批量质量状态与可复现 Docker/CI 流程
 
 ## 项目结构
 
@@ -94,25 +104,27 @@ backend/   FastAPI API、解析器、XML 生成器、校验器与测试
 frontend/  Vue 3 单页转换工作台
 ```
 
-## MVP 限制与扩展方向
+## 决赛展示流程
+
+1. 执行 `docker compose up --build`，访问 `http://localhost:8080`。
+2. 点击“一键加载演示数据”，展示从 Word 文档流到结构化 JSON、JATS XML 的完整转换。
+3. 在“质量报告”查看总分、七项分项得分、问题定位与修复建议。
+4. 在“校验结果”分别展示 XML 合法性、正式 JATS Schema、业务规则与交叉引用检查。
+5. 进入“人工校正”修改元数据或参考文献，点击“重新生成 XML”展示质量闭环。
+6. 在批量列表展示质量分、错误、警告和导出状态，并下载 XML 或完整 ZIP 交付包。
+7. 展示 `docs/评测报告.md`、`docs/消融实验报告.md` 与 `docs/错误案例分析.md`。
+
+## 当前真实限制
 
 - 当前使用启发式规则，复杂排版、多人多单位映射可能需要人工校正。
-- 图片会从 DOCX 压缩包的 `word/media` 提取到 `backend/temp`，并在 JSON/XML 中记录相对路径；MVP API 暂不单独提供图片下载接口。
-- 图片、图题、表格、表题和公式基于 `document.xml` 真实节点流绑定，并记录出现位置对应的 `section_index`。
-- 图片或表格与题注数量不一致时保持宽容：多余对象保留空 caption，多余题注保留为 caption-only 对象，并且不会跨章节错误绑定。
-- 图片通过 `word/_rels/document.xml.rels` 中的 `r:embed` 关系定位真实 `word/media` 文件。
-- Word OMML `m:oMath/m:oMathPara` 会保留原始 `omml`，并生成 `mathml`、`latex` 与文本回退字段。
-- 当前 OMML 转换支持分数、上标、下标、根号、求和、括号、普通变量和运算符；JATS 输出包含 `alternatives/mml:math/tex-math`。
-- 无法转换为 MathML 的 OMML 仍保留 `tex-math` 或纯文本，并在校验结果中给出非阻断性 warning。
-- 正文引用支持 `图1`、`Fig. 1`、`表1`、`Table 1`、`式（1）`、`Eq. (1)`、`[1]`、`[1,2]` 和 `[1-3]`。组合参考文献引用使用空格分隔的 JATS `rid` IDREFS。
-- 交叉引用校验检查正文 `xref` 的每个 `rid` 是否指向已有 XML `id`；无法解析的目标作为非阻断性 warning 展示。
-- 当前公式识别是基础规则版本，支持常见运算符、希腊字母、`frac`、`sqrt`、`lim`、`log`、`sin`、`cos` 和 Equation/公式样式，并输出带 CDATA 的 `tex-math`。
-- 后续可扩展更多 OMML 结构、LaTeX-OCR，以及 Mathpix 等第三方公式识别方案；当前 MVP 不调用商业 API。
-- 参考文献当前保留清理编号后的原始引文文本，尚未进一步拆分作者、题名、期刊、年份等字段。
-- 当前输出更接近 JATS Publishing 结构，但校验仍为原型级结构检查，尚未接入正式 JATS DTD/XSD 校验。
-- 列表优先识别 Word 编号属性及常见文本前缀，暂未保留嵌套层级。
-- 后续可增加 JATS DTD/XSD 校验、在线结构编辑、细粒度引用拆分与批量任务历史。
+- 暂不支持矩阵、多行公式、复杂重音符号等全部 OMML 结构。
+- 图片公式暂不支持 OCR；当前版本不调用商业 API。
+- 参考文献会保留 `raw` 与 `mixed_citation`，并启发式拆分作者、题名、来源、年份、卷期页码、DOI 和出版类型；复杂或非标准引文仍可能需要人工校正。
+- 系统已接入本地正式 JATS Publishing 1.4 DTD 校验，并与 XML 合法性、业务规则校验分开展示；当前生成结果仍可能因缺少 ISSN 等期刊级必填元数据而无法通过正式 DTD。
+- 复杂合并单元格、跨页表格和嵌套列表仍可能需要人工校正。
+- Profile 已支持规则与元数据默认值，但尚未覆盖所有期刊的专属必填字段和许可策略。
 - 当前批量转换按上传顺序逐篇执行，适合比赛原型；大规模任务可进一步扩展异步队列、进度查询和结果过期清理。
+- 当前质量分是可解释的规则评分，不等同于出版社最终验收结论。
 
 ## ZIP 结果包
 
@@ -122,10 +134,11 @@ frontend/  Vue 3 单页转换工作台
 article.xml
 article.json
 validation_report.md
+quality_report.json
 manifest.json
 media/
 ```
 
-ZIP 导出只允许读取后端转换临时目录中的媒体文件，不接受任意本地路径。
+提交 `quality_report` 时 ZIP 会包含 `quality_report.json`；ZIP 导出只允许读取后端转换临时目录中的媒体文件，不接受任意本地路径。
 
 更详细的服务说明见 [backend/README.md](backend/README.md) 和 [frontend/README.md](frontend/README.md)。

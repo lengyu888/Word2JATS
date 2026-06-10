@@ -1,6 +1,7 @@
 <script setup>
 defineProps({
   results: { type: Array, required: true },
+  exportStatuses: { type: Object, default: () => ({}) },
 })
 defineEmits(['select', 'download-xml', 'download-package'])
 </script>
@@ -28,13 +29,15 @@ defineEmits(['select', 'download-xml', 'download-package'])
           </div>
         </div>
         <div class="counts">
+          <span>质量分 <b>{{ item.quality_report?.total_score ?? '-' }}</b></span>
           <span>警告 <b>{{ item.validation?.warnings?.length || 0 }}</b></span>
           <span>错误 <b>{{ item.validation?.errors?.length || 0 }}</b></span>
+          <span>导出 <b>{{ exportStatuses[item.filename] || '待导出' }}</b></span>
         </div>
         <div class="actions">
           <el-button :disabled="item.status !== 'success'" @click="$emit('select', item)">查看详情</el-button>
           <el-button :disabled="item.status !== 'success'" @click="$emit('download-xml', item)">下载 XML</el-button>
-          <el-button type="primary" :disabled="item.status !== 'success'" @click="$emit('download-package', item)">
+          <el-button type="primary" :loading="exportStatuses[item.filename] === '生成中'" :disabled="item.status !== 'success'" @click="$emit('download-package', item)">
             下载 ZIP
           </el-button>
         </div>

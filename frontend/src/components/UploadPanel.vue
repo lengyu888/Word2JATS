@@ -6,7 +6,7 @@ const props = defineProps({
   loading: Boolean,
   profiles: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['convert'])
+const emit = defineEmits(['convert', 'demo'])
 const selectedFiles = ref([])
 const selectedProfile = ref('default')
 
@@ -72,6 +72,9 @@ function convert() {
       >
         <el-icon><MagicStick /></el-icon>
         开始批量转换
+      </el-button>
+      <el-button size="large" :loading="props.loading" @click="$emit('demo', selectedProfile)">
+        一键加载演示数据
       </el-button>
     </div>
   </section>

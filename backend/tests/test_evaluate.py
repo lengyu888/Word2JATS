@@ -1,4 +1,7 @@
-from evaluate import aggregate_results, compare_articles, evaluate_dataset, render_report
+from evaluate import (
+    aggregate_results, compare_articles, evaluate_ablation, evaluate_dataset,
+    render_ablation_report, render_error_analysis, render_report,
+)
 
 
 def test_compare_articles_calculates_required_metrics():
@@ -97,3 +100,15 @@ def test_evaluate_dataset_runs_all_committed_goldens():
         "word2jats_omml_formulas.docx",
     }
     assert metrics["xml_valid_rate"] == 1.0
+
+
+def test_ablation_and_error_reports_cover_final_metrics():
+    rows = evaluate_ablation()
+    assert list(rows) == [
+        "baseline_rules", "document_flow", "document_flow_omml",
+        "document_flow_omml_xref", "profile_schema_full",
+    ]
+    assert "keyword_f1" in rows["profile_schema_full"]
+    assert "jats_schema_valid_rate" in rows["profile_schema_full"]
+    assert "# Word2JATS 消融实验报告" in render_ablation_report(rows)
+    assert "# Word2JATS 错误案例分析" in render_error_analysis([])

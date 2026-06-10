@@ -16,6 +16,14 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
+def test_demo_document_endpoint():
+    response = client.get("/api/demo-document")
+
+    assert response.status_code == 200
+    assert "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in response.headers["content-type"]
+    assert response.content.startswith(b"PK")
+
+
 def test_profiles_endpoint_and_convert_profile_parameter():
     profiles = client.get("/api/profiles")
     assert profiles.status_code == 200
@@ -49,6 +57,8 @@ def test_convert_endpoint_returns_all_outputs():
     assert payload["article"]["title"] == "面向出版的智能结构化转换"
     assert payload["xml"].startswith("<?xml")
     assert payload["validation"]["passed"] is True
+    assert 0 <= payload["quality_report"]["total_score"] <= 100
+    assert "metadata_score" in payload["quality_report"]["scores"]
 
 
 def test_convert_endpoint_rejects_non_docx():
@@ -91,6 +101,7 @@ def test_generate_xml_endpoint_uses_corrected_article():
     assert "<article-title>人工校正后的标题</article-title>" in payload["xml"]
     assert "<title>校正后的章节</title>" in payload["xml"]
     assert payload["validation"]["passed"] is True
+    assert payload["quality_report"]["issues"] is not None
 
 
 def test_generate_xml_endpoint_normalizes_missing_optional_collections():
@@ -252,6 +263,13 @@ def test_export_package_contains_required_files_and_media(tmp_path):
         "xml": "<?xml version=\"1.0\"?><article/>",
         "media_paths": [str(package_media)],
         "validation": {"passed": True, "errors": [], "warnings": [], "xref_checks": []},
+        "quality_report": {
+            "total_score": 95,
+            "grade": "A",
+            "scores": {"metadata_score": 100},
+            "issues": [],
+            "summary": {"error_count": 0, "warning_count": 0, "suggestion_count": 0},
+        },
     }
 
     response = client.post("/api/export-package", json=payload)
@@ -263,6 +281,7 @@ def test_export_package_contains_required_files_and_media(tmp_path):
             "article.xml",
             "article.json",
             "validation_report.md",
+            "quality_report.json",
             "media/",
             "media/figure.png",
             "manifest.json",
@@ -271,6 +290,7 @@ def test_export_package_contains_required_files_and_media(tmp_path):
         manifest = json.loads(archive.read("manifest.json"))
         assert article["title"] == "打包测试"
         assert manifest["source_filename"] == "sample.docx"
+        assert manifest["quality_score"] == 95
         assert "media/figure.png" in manifest["files"]
 
 

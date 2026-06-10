@@ -26,6 +26,13 @@ export async function getProfiles() {
   return response.data.profiles
 }
 
+export async function getDemoDocument() {
+  const response = await client.get('/demo-document', { responseType: 'blob' })
+  return new File([response.data], 'word2jats_feature_acceptance.docx', {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  })
+}
+
 export async function generateXml(article) {
   const response = await client.post('/generate-xml', { article })
   return response.data
