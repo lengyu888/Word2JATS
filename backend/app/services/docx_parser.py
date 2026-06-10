@@ -30,6 +30,11 @@ class DocxParser:
         re.I,
     )
     LIST_RE = re.compile(r"^\s*(?:[（(]\d+[）)]|\d+[）)]|[-•·])\s*")
+    TABLE_RE = re.compile(
+        r"^\s*(?:表\s*\d+(?:\s*[-－—.]\s*\d+)*|table\s*\d+(?:\s*[-.]\s*\d+)*)"
+        r"(?:\s+|[:：])?.*$",
+        re.I,
+    )
     FORMULA_RE = re.compile(
         r"(=|≈|≤|≥|∑|∫|√|[αβγλμσ]|\\?frac|\\?sqrt|\blim\b|\blog\b|\bsin\b|\bcos\b)",
         re.I,
@@ -45,6 +50,7 @@ class DocxParser:
         article = self._empty_article()
         if not paragraphs:
             article["figures"] = self._extract_images([])
+            article["tables"] = self._extract_tables(document, [])
             return article
 
         title_index = self._find_title_index(paragraphs)
@@ -59,6 +65,7 @@ class DocxParser:
         in_abstract = False
         in_references = False
         captions: list[tuple[str, int]] = []
+        table_captions: list[tuple[str, int]] = []
 
         for index, paragraph in enumerate(paragraphs):
             if index in skipped:
@@ -94,6 +101,10 @@ class DocxParser:
                 in_abstract = False
                 captions.append((text, current_section_index))
                 continue
+            if self.TABLE_RE.match(text):
+                in_abstract = False
+                table_captions.append((text, current_section_index))
+                continue
 
             section = self._parse_section_title(text)
             if section:
@@ -127,6 +138,7 @@ class DocxParser:
 
         article["abstract"] = "\n".join(abstract_parts)
         article["figures"] = self._extract_images(captions)
+        article["tables"] = self._extract_tables(document, table_captions)
         return article
 
     @staticmethod
@@ -134,7 +146,7 @@ class DocxParser:
         return {
             "title": "", "authors": [], "affiliations": [], "abstract": "",
             "keywords": [], "sections": [], "figures": [], "lists": [],
-            "formulas": [], "references": [],
+            "tables": [], "formulas": [], "references": [],
         }
 
     def _find_title_index(self, paragraphs: list[Any]) -> int:
@@ -184,6 +196,7 @@ class DocxParser:
                 and not self.ABSTRACT_RE.match(text)
                 and not self.KEYWORD_RE.match(text)
                 and not self.FIGURE_RE.match(text)
+                and not self.TABLE_RE.match(text)
                 and not self._is_formula(paragraphs[index], text)
                 and not self._parse_section_title(text)
                 and re.search(r"[，,；;\s、]", text)
@@ -256,6 +269,26 @@ class DocxParser:
                 "section_index": section_index,
             })
         return figures
+
+    @staticmethod
+    def _extract_tables(
+        document: Any, captions: list[tuple[str, int]]
+    ) -> list[dict[str, Any]]:
+        table_rows = [
+            [[cell.text.strip() for cell in row.cells] for row in table.rows]
+            for table in document.tables
+        ]
+        tables = []
+        for index in range(max(len(table_rows), len(captions))):
+            caption, section_index = captions[index] if index < len(captions) else ("", -1)
+            rows = table_rows[index] if index < len(table_rows) else []
+            tables.append({
+                "id": f"tab{index + 1}",
+                "caption": caption,
+                "rows": rows,
+                "section_index": section_index,
+            })
+        return tables
 
     @staticmethod
     def _natural_sort_key(value: str) -> list[Any]:

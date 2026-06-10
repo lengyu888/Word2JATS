@@ -43,6 +43,12 @@ class ArticleValidator:
         for figure in article.get("figures", []):
             if not figure.get("caption", "").strip():
                 warnings.append(f"图片 {figure.get('id', '未命名图片')} 缺少图题。")
+        for index, table in enumerate(article.get("tables", []), start=1):
+            table_id = table.get("id") or index
+            if not table.get("caption", "").strip():
+                warnings.append(f"表格 {table_id} 缺少表题。")
+            if not table.get("rows"):
+                warnings.append(f"表格 {table_id} 没有数据行。")
         for index, formula in enumerate(article.get("formulas", []), start=1):
             content = (
                 formula.get("content")
@@ -66,7 +72,14 @@ class ArticleValidator:
             errors.append(f"XML 无法解析：{exc}")
             return
 
-        if not root.xpath("//*[local-name()='article-meta']"):
-            errors.append("缺少 JATS article-meta 节点。")
-        if not root.xpath("//*[local-name()='body']"):
-            errors.append("缺少 JATS body 节点。")
+        required_nodes = (
+            ("journal-meta", "缺少 JATS journal-meta 节点。"),
+            ("article-meta", "缺少 JATS article-meta 节点。"),
+            ("title-group", "缺少 JATS title-group 节点。"),
+            ("contrib-group", "缺少 JATS contrib-group 节点。"),
+            ("body", "缺少 JATS body 节点。"),
+            ("back", "缺少 JATS back 节点。"),
+        )
+        for node_name, message in required_nodes:
+            if not root.xpath(f"//*[local-name()='{node_name}']"):
+                errors.append(message)

@@ -1,0 +1,16 @@
+{
+  "title": "Word2JATS：面向学术出版的智能结构化转换方法",
+  "abstract": "学术论文从 Word 稿件转换为结构化 XML 是数字出版流程中的关键环节。本文设计并实现了一个基于规则的 Word2JATS 原型系统。\n系统能够提取文章元数据、章节、图片、列表、公式与参考文献，并生成 JATS 风格 XML。",
+  "keywords": ["JATS", "Word", "学术出版", "结构化转换"],
+  "sections": [
+    {"title": "引言"},
+    {"title": "研究背景"},
+    {"title": "系统方法"},
+    {"title": "公式识别"},
+    {"title": "结果与讨论"},
+    {"title": "结论"}
+  ],
+  "figures": [{}],
+  "formulas": [{}],
+  "references": [{}, {}]
+}

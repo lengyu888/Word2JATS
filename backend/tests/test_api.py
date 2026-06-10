@@ -130,3 +130,57 @@ def test_generate_xml_endpoint_normalizes_legacy_reference_raw():
     assert '<ref id="ref1">' in xml
     assert "<label>[1]</label>" in xml
     assert "<mixed-citation>Legacy citation.</mixed-citation>" in xml
+
+
+def test_generate_xml_endpoint_accepts_publishing_metadata():
+    response = client.post(
+        "/api/generate-xml",
+        json={
+            "article": {
+                "title": "元数据测试",
+                "doi": "10.1234/test",
+                "journal_title": "测试期刊",
+                "journal_id": "TEST",
+                "publisher_name": "测试出版社",
+                "subject": "出版技术",
+                "pub_year": "2026",
+                "pub_month": "06",
+                "pub_day": "10",
+                "abstract": "摘要",
+                "keywords": ["JATS", "XML", "出版"],
+                "sections": [{"title": "引言", "paragraphs": ["正文"]}],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["validation"]["passed"] is True
+    assert "<journal-title>测试期刊</journal-title>" in payload["xml"]
+    assert '<article-id pub-id-type="doi">10.1234/test</article-id>' in payload["xml"]
+
+
+def test_generate_xml_endpoint_accepts_tables():
+    response = client.post(
+        "/api/generate-xml",
+        json={
+            "article": {
+                "title": "表格接口测试",
+                "abstract": "摘要",
+                "keywords": ["表格", "JATS", "测试"],
+                "sections": [{"title": "结果", "paragraphs": ["正文"]}],
+                "tables": [
+                    {
+                        "id": "tab1",
+                        "caption": "表1 实验结果",
+                        "rows": [["指标", "结果"], ["准确率", "95%"]],
+                        "section_index": 0,
+                    }
+                ],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert '<table-wrap id="tab1">' in payload["xml"]

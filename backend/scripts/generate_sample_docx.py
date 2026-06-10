@@ -114,6 +114,24 @@ def build_main_document() -> Document:
     document.add_paragraph("Fig. 4 Overview")
     document.add_paragraph("Figure 5 Caption-only architecture description")
 
+    table = document.add_table(rows=3, cols=3)
+    table.style = "Table Grid"
+    for cell, value in zip(table.rows[0].cells, ["指标", "方法A", "方法B"]):
+        cell.text = value
+    for cell, value in zip(table.rows[1].cells, ["准确率", "90%", "95%"]):
+        cell.text = value
+    for cell, value in zip(table.rows[2].cells, ["召回率", "87%", "93%"]):
+        cell.text = value
+    document.add_paragraph("表1 实验结果")
+
+    table = document.add_table(rows=2, cols=2)
+    table.style = "Table Grid"
+    for cell, value in zip(table.rows[0].cells, ["Metric", "Value"]):
+        cell.text = value
+    for cell, value in zip(table.rows[1].cells, ["F1", "94%"]):
+        cell.text = value
+    document.add_paragraph("Table 2 Evaluation summary")
+
     document.add_paragraph("（一）公式识别")
     document.add_paragraph("F = α × precision + β × recall")
     document.add_paragraph("x ≈ μ + σ")

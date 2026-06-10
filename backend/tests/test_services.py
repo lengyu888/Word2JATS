@@ -117,6 +117,8 @@ def test_generator_produces_parseable_jats():
     assert "<surname>张</surname>" in xml
     assert '<disp-formula id="eq1">' in xml
     assert "<![CDATA[E = mc²]]>" in xml
+    assert '<xref ref-type="aff" rid="aff1"/>' in xml
+    assert '<aff id="aff1">测试大学</aff>' in xml
     assert result["passed"] is True
 
 
@@ -187,6 +189,52 @@ def test_generator_builds_labeled_reference_list():
     assert '<ref id="ref1">' in xml
     assert "<label>[1]</label>" in xml
     assert "<mixed-citation>First citation.</mixed-citation>" in xml
+
+
+def test_generator_builds_jats_publishing_metadata_and_affiliation_links():
+    article = {
+        "title": "JATS Publishing 测试",
+        "doi": "10.1234/word2jats.2026.001",
+        "article_type": "research-article",
+        "lang": "zh",
+        "journal_title": "智能出版研究",
+        "journal_id": "W2J",
+        "publisher_name": "未来出版学会",
+        "subject": "数字出版",
+        "pub_year": "2026",
+        "pub_month": "06",
+        "pub_day": "10",
+        "authors": [
+            {"name": "张三", "orcid": "0000-0001-2345-6789", "affiliation_ids": ["aff1"]},
+            {"name": "李四", "orcid": "", "affiliation_ids": ["aff2"]},
+        ],
+        "affiliations": ["未来出版大学", "智能出版研究院"],
+        "abstract": "摘要",
+        "keywords": ["JATS", "Publishing", "测试"],
+        "sections": [{"title": "引言", "level": 1, "paragraphs": ["正文"]}],
+        "figures": [],
+        "lists": [],
+        "formulas": [],
+        "references": [],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert 'article-type="research-article"' in xml
+    assert 'dtd-version="1.4"' in xml
+    assert 'xml:lang="zh"' in xml
+    assert "<journal-meta>" in xml
+    assert '<journal-id journal-id-type="publisher-id">W2J</journal-id>' in xml
+    assert "<journal-title>智能出版研究</journal-title>" in xml
+    assert "<publisher-name>未来出版学会</publisher-name>" in xml
+    assert '<article-id pub-id-type="doi">10.1234/word2jats.2026.001</article-id>' in xml
+    assert "<subject>数字出版</subject>" in xml
+    assert '<xref ref-type="aff" rid="aff1"/>' in xml
+    assert '<xref ref-type="aff" rid="aff2"/>' in xml
+    assert '<aff id="aff1">未来出版大学</aff>' in xml
+    assert '<aff id="aff2">智能出版研究院</aff>' in xml
+    assert '<pub-date pub-type="epub">' in xml
+    assert "<year>2026</year>" in xml
 
 
 def test_parser_recognizes_formula_symbols_keywords_and_equation_style(tmp_path):
@@ -341,6 +389,120 @@ def test_generator_omits_graphic_for_caption_only_figure():
     assert "<graphic" not in xml
 
 
+def test_parser_extracts_tables_and_binds_supported_captions(tmp_path):
+    path = tmp_path / "tables.docx"
+    document = Document()
+    title = document.add_paragraph("表格解析测试")
+    title.alignment = 1
+    title.runs[0].bold = True
+    document.add_paragraph("摘要：测试表格解析。")
+    document.add_paragraph("关键词：表格；JATS；测试")
+    document.add_paragraph("1 结果")
+    table1 = document.add_table(rows=2, cols=3)
+    for cell, value in zip(table1.rows[0].cells, ["指标", "方法A", "方法B"]):
+        cell.text = value
+    for cell, value in zip(table1.rows[1].cells, ["准确率", "90%", "95%"]):
+        cell.text = value
+    document.add_paragraph("表1 实验结果")
+    table2 = document.add_table(rows=2, cols=2)
+    for cell, value in zip(table2.rows[0].cells, ["Metric", "Value"]):
+        cell.text = value
+    for cell, value in zip(table2.rows[1].cells, ["Recall", "88%"]):
+        cell.text = value
+    document.add_paragraph("Table 2 Evaluation")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["tables"] == [
+        {
+            "id": "tab1",
+            "caption": "表1 实验结果",
+            "rows": [["指标", "方法A", "方法B"], ["准确率", "90%", "95%"]],
+            "section_index": 0,
+        },
+        {
+            "id": "tab2",
+            "caption": "Table 2 Evaluation",
+            "rows": [["Metric", "Value"], ["Recall", "88%"]],
+            "section_index": 0,
+        },
+    ]
+
+
+def test_parser_extracts_table_from_document_without_non_empty_paragraphs(tmp_path):
+    path = tmp_path / "table-only.docx"
+    document = Document()
+    document.add_table(rows=1, cols=2).rows[0].cells[0].text = "A"
+    document.tables[0].rows[0].cells[1].text = "B"
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["tables"][0]["rows"] == [["A", "B"]]
+
+
+def test_parser_keeps_extra_tables_and_caption_only_tables(tmp_path):
+    extra_table_path = tmp_path / "extra-table.docx"
+    document = Document()
+    document.add_paragraph("表格测试")
+    document.add_table(rows=1, cols=1).cell(0, 0).text = "A"
+    document.add_paragraph("表 1 第一张表")
+    document.add_table(rows=1, cols=1).cell(0, 0).text = "B"
+    document.save(extra_table_path)
+
+    table_article = DocxParser(extra_table_path, tmp_path / "table-media").parse()
+    assert len(table_article["tables"]) == 2
+    assert table_article["tables"][1]["caption"] == ""
+    assert table_article["tables"][1]["rows"] == [["B"]]
+
+    extra_caption_path = tmp_path / "extra-caption.docx"
+    document = Document()
+    document.add_paragraph("表格测试")
+    document.add_table(rows=1, cols=1).cell(0, 0).text = "A"
+    document.add_paragraph("表 1 第一张表")
+    document.add_paragraph("Table 2 Caption only")
+    document.save(extra_caption_path)
+
+    caption_article = DocxParser(extra_caption_path, tmp_path / "caption-media").parse()
+    assert len(caption_article["tables"]) == 2
+    assert caption_article["tables"][1]["caption"] == "Table 2 Caption only"
+    assert caption_article["tables"][1]["rows"] == []
+
+
+def test_generator_builds_jats_table_wrap():
+    article = {
+        "title": "表格测试",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "摘要",
+        "keywords": ["表格", "JATS", "测试"],
+        "sections": [{"title": "结果", "level": 1, "paragraphs": ["正文"]}],
+        "figures": [],
+        "tables": [
+            {
+                "id": "tab1",
+                "caption": "表1 实验结果",
+                "rows": [["指标", "方法A"], ["准确率", "95%"]],
+                "section_index": 0,
+            }
+        ],
+        "lists": [],
+        "formulas": [],
+        "references": [],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert '<table-wrap id="tab1">' in xml
+    assert "<label>表1</label>" in xml
+    assert "<p>表1 实验结果</p>" in xml
+    assert "<thead>" in xml
+    assert "<th>指标</th>" in xml
+    assert "<tbody>" in xml
+    assert "<td>95%</td>" in xml
+
+
 def test_validator_reports_required_content():
     article = {
         "title": "",
@@ -358,9 +520,13 @@ def test_validator_reports_required_content():
     result = ArticleValidator().validate(article, "<article />")
 
     assert result["passed"] is False
-    assert len(result["errors"]) == 6
+    assert len(result["errors"]) == 10
+    assert "缺少 JATS journal-meta 节点。" in result["errors"]
     assert "缺少 JATS article-meta 节点。" in result["errors"]
+    assert "缺少 JATS title-group 节点。" in result["errors"]
+    assert "缺少 JATS contrib-group 节点。" in result["errors"]
     assert "缺少 JATS body 节点。" in result["errors"]
+    assert "缺少 JATS back 节点。" in result["errors"]
     assert "作者为空，建议补充作者信息。" in result["warnings"]
     assert "单位为空，建议补充作者单位。" in result["warnings"]
     assert "参考文献为空，建议补充参考文献。" in result["warnings"]
@@ -378,6 +544,10 @@ def test_validator_reports_jats_quality_warnings():
         "sections": [{"title": "引言", "level": 1, "paragraphs": []}],
         "figures": [{"id": "fig1", "caption": "", "path": "image.png"}],
         "lists": [],
+        "tables": [
+            {"id": "tab1", "caption": "", "rows": [["A"]], "section_index": 0},
+            {"id": "tab2", "caption": "表2 空表", "rows": [], "section_index": 0},
+        ],
         "formulas": [{"id": "eq1", "content": "", "type": "plain_text", "section_index": 0}],
         "references": [],
     }
@@ -386,6 +556,8 @@ def test_validator_reports_jats_quality_warnings():
     result = ArticleValidator().validate(article, xml)
 
     assert result["passed"] is True
+    assert "表格 tab1 缺少表题。" in result["warnings"]
+    assert "表格 tab2 没有数据行。" in result["warnings"]
     assert "作者 张三 缺少 ORCID。" in result["warnings"]
     assert "章节“引言”没有正文段落。" in result["warnings"]
     assert "公式 eq1 内容为空。" in result["warnings"]
@@ -412,3 +584,30 @@ def test_validator_reports_invalid_xml_without_jats_node_duplicates():
     assert len([error for error in result["errors"] if "XML 无法解析" in error]) == 1
     assert not any("article-meta" in error for error in result["errors"])
     assert not any("body" in error for error in result["errors"])
+
+
+def test_validator_reports_missing_jats_publishing_structure():
+    article = {
+        "title": "测试文章",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "摘要",
+        "keywords": ["一", "二", "三"],
+        "sections": [{"title": "引言", "level": 1, "paragraphs": ["正文"]}],
+        "figures": [],
+        "lists": [],
+        "formulas": [],
+        "references": [],
+    }
+
+    result = ArticleValidator().validate(
+        article,
+        "<article><front><article-meta/></front><body/><back/></article>",
+    )
+
+    assert result["passed"] is False
+    assert result["errors"] == [
+        "缺少 JATS journal-meta 节点。",
+        "缺少 JATS title-group 节点。",
+        "缺少 JATS contrib-group 节点。",
+    ]

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
 
 const props = defineProps({ validation: { type: Object, required: true } })
-const requiredCheckCount = 7
+const requiredCheckCount = 10
 const passedCount = computed(() => Math.max(0, requiredCheckCount - props.validation.errors.length))
 </script>
 

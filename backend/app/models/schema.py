@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 class Author(BaseModel):
     name: str
     orcid: str = ""
+    affiliation_ids: list[str] = Field(default_factory=list)
 
 
 class Section(BaseModel):
@@ -18,6 +19,13 @@ class Figure(BaseModel):
     id: str
     caption: str = ""
     path: str = ""
+    section_index: int = -1
+
+
+class ArticleTable(BaseModel):
+    id: str
+    caption: str = ""
+    rows: list[list[str]] = Field(default_factory=list)
     section_index: int = -1
 
 
@@ -69,12 +77,23 @@ class Reference(BaseModel):
 
 class Article(BaseModel):
     title: str = ""
+    doi: str = ""
+    article_type: str = "research-article"
+    lang: str = "zh"
+    journal_title: str = ""
+    journal_id: str = ""
+    publisher_name: str = ""
+    subject: str = ""
+    pub_year: str = ""
+    pub_month: str = ""
+    pub_day: str = ""
     authors: list[Author] = Field(default_factory=list)
     affiliations: list[str] = Field(default_factory=list)
     abstract: str = ""
     keywords: list[str] = Field(default_factory=list)
     sections: list[Section] = Field(default_factory=list)
     figures: list[Figure] = Field(default_factory=list)
+    tables: list[ArticleTable] = Field(default_factory=list)
     lists: list[ArticleList] = Field(default_factory=list)
     formulas: list[Formula] = Field(default_factory=list)
     references: list[Reference] = Field(default_factory=list)

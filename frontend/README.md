@@ -43,8 +43,11 @@ npm run build
 - 校验面板展示通过项、错误项和警告项数量，并按绿色、红色、黄色区分状态
 - 人工校正文章结构并重新生成 XML
 - 结构化 JSON 展示提取后的 figures，人工校正页可编辑图片 caption 和相对路径
+- 结构化 JSON 展示 tables，人工校正页可编辑表题、二维 rows 和 section_index，并重新生成 `table-wrap`
 - 结构化 JSON 展示 formulas，人工校正页可编辑公式内容并重新生成 `disp-formula`
 - 结构化 JSON 展示 `id/label/raw` references，人工校正页可编辑后重新生成 `ref-list`
+- 人工校正页支持 DOI、文章类型、语言、期刊、出版者、学科和出版日期等 JATS Publishing 元数据
+- 作者可在 authors JSON 中使用 `affiliation_ids` 编辑与 `aff1`、`aff2` 等单位的关联
 - 响应式布局
 
 ## 后续扩展方向
