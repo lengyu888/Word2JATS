@@ -14,6 +14,7 @@ from app.models.schema import (
 )
 from app.services.docx_parser import DocxParser
 from app.services.jats_generator import JatsGenerator
+from app.services.jats_auto_fixer import JatsAutoFixer
 from app.services.package_exporter import PackageExporter
 from app.services.profile_loader import ProfileLoader
 from app.services.quality_scorer import QualityScorer
@@ -29,6 +30,20 @@ quality_scorer = QualityScorer()
 SAMPLE_ROOT = Path(__file__).resolve().parents[3] / "sample_documents"
 
 
+def _generate_outputs(article: dict, profile: dict) -> tuple[str, dict, dict]:
+    xml = JatsGenerator(profile).generate(article)
+    validator = ArticleValidator()
+    initial_schema = validator.schema_validator.validate(xml)
+    xml, auto_fix, final_schema = JatsAutoFixer(validator.schema_validator).fix(
+        xml, initial_schema
+    )
+    validation = validator.validate(
+        article, xml, schema_result=final_schema, auto_fix=auto_fix
+    )
+    quality_report = quality_scorer.score(article, validation)
+    return xml, validation, quality_report
+
+
 async def _convert_upload(file: UploadFile, profile_name: str = "default") -> dict:
     if not file.filename or Path(file.filename).suffix.lower() != ".docx":
         raise ValueError("仅支持 .docx 文件。")
@@ -39,9 +54,7 @@ async def _convert_upload(file: UploadFile, profile_name: str = "default") -> di
         article = DocxParser(source, work_dir / "media", profile).parse()
     finally:
         source.unlink(missing_ok=True)
-    xml = JatsGenerator(profile).generate(article)
-    validation = ArticleValidator().validate(article, xml)
-    quality_report = quality_scorer.score(article, validation)
+    xml, validation, quality_report = _generate_outputs(article, profile)
     media_paths = [
         figure.get("path", "")
         for figure in article.get("figures", [])
@@ -100,9 +113,7 @@ def generate_xml(payload: GenerateXmlRequest) -> dict:
     article = payload.article.model_dump()
     profile = profile_loader.load(article.get("profile", "default"))
     article = ProfileLoader.apply_metadata(article, profile)
-    xml = JatsGenerator(profile).generate(article)
-    validation = ArticleValidator().validate(article, xml)
-    quality_report = quality_scorer.score(article, validation)
+    xml, validation, quality_report = _generate_outputs(article, profile)
     return {
         "success": True,
         "xml": xml,

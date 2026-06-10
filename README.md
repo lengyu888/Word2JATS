@@ -5,6 +5,7 @@
 - 上传时可选择 `default`、中文期刊、英文期刊或 IMR 期刊 Profile；Profile 会影响摘要/关键词/图表题识别，并补齐期刊元数据。
 - 参考文献会保留 `raw` 与 `mixed_citation`，并尝试解析作者、题名、来源、年份、卷期页码、DOI、出版类型和置信度；有结构化字段时输出 JATS `element-citation`。
 - 校验结果分为 XML 合法性、正式 JATS Schema、业务规则和引用完整性。正式 Schema 未配置时明确返回 `jats_schema_valid: null`。
+- 正式 Schema 失败后执行最多两轮白名单自动修复，自动处理图片 `xlink:href`、已知节点顺序和重复 ID 等确定性问题。
 - 仓库已内置官方 JATS Publishing 1.4 MathML3 DTD 完整发行包，系统会从 `backend/schemas/` 自动发现主 DTD；也可通过 `JATS_SCHEMA_PATH` 指定其他本地 RNG/XSD/DTD 主文件。
 
 Word2JATS 是一个面向学术出版的智能结构化转换原型。用户上传 `.docx` 学术论文后，系统使用可解释的规则算法提取文章结构，生成中间 JSON、JATS 风格 XML，并执行基础完整性校验。
@@ -95,6 +96,7 @@ python evaluate.py
 - 支持下载单篇 XML，以及包含 XML、JSON、校验报告、媒体文件和 manifest 的 ZIP 结果包
 - 支持人工校正结构化数据并重新生成 XML
 - 基于元数据、结构、Schema、图表、公式、参考文献和交叉引用生成 0-100 质量分、问题定位与修复建议
+- 展示 Schema 自动修复前后错误数量、已应用修复和仍需人工处理的问题
 - 提供内置演示稿一键加载、首页能力卡片、批量质量状态与可复现 Docker/CI 流程
 
 ## 项目结构
@@ -125,6 +127,7 @@ frontend/  Vue 3 单页转换工作台
 - Profile 已支持规则与元数据默认值，但尚未覆盖所有期刊的专属必填字段和许可策略。
 - 当前批量转换按上传顺序逐篇执行，适合比赛原型；大规模任务可进一步扩展异步队列、进度查询和结果过期清理。
 - 当前质量分是可解释的规则评分，不等同于出版社最终验收结论。
+- Schema 自动修复不会编造 ISSN、DOI、ORCID、作者或出版日期；这些真实出版信息缺失时仍需人工补充。
 
 ## ZIP 结果包
 

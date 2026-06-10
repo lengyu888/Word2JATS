@@ -15,6 +15,7 @@ from typing import Any
 from lxml import etree
 
 from app.services.docx_parser import DocxParser
+from app.services.jats_auto_fixer import JatsAutoFixer
 from app.services.jats_generator import JatsGenerator
 from app.services.validator import ArticleValidator
 
@@ -26,6 +27,14 @@ GOLDEN_DIR = BACKEND_DIR / "evaluation" / "goldens"
 REPORT_PATH = PROJECT_DIR / "docs" / "评测报告.md"
 ABLATION_REPORT_PATH = PROJECT_DIR / "docs" / "消融实验报告.md"
 ERROR_REPORT_PATH = PROJECT_DIR / "docs" / "错误案例分析.md"
+
+
+def generate_and_validate(article: dict) -> tuple[str, dict]:
+    xml = JatsGenerator().generate(article)
+    validator = ArticleValidator()
+    initial = validator.schema_validator.validate(xml)
+    xml, auto_fix, schema = JatsAutoFixer(validator.schema_validator).fix(xml, initial)
+    return xml, validator.validate(article, xml, schema_result=schema, auto_fix=auto_fix)
 
 METRIC_NAMES = (
     "title_accuracy",
@@ -134,7 +143,7 @@ def evaluate_dataset(
         with tempfile.TemporaryDirectory(prefix="word2jats-evaluate-") as temp_dir:
             started = time.perf_counter()
             predicted = DocxParser(sample_path, Path(temp_dir) / "media").parse()
-            xml = JatsGenerator().generate(predicted)
+            xml, _ = generate_and_validate(predicted)
             elapsed = time.perf_counter() - started
         results.append(
             compare_articles(
@@ -194,7 +203,7 @@ def evaluate_ablation(
         golden = json.loads((golden_dir / f"{sample.stem}.json").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory(prefix="word2jats-ablation-") as temp_dir:
             article = DocxParser(sample, Path(temp_dir) / "media").parse()
-            validation = ArticleValidator().validate(article, JatsGenerator().generate(article))
+            _, validation = generate_and_validate(article)
         metric = final_metrics(result, schema_valid=validation["jats_schema_valid"] is True)
         metric["table_binding_accuracy"] = float(
             len(article.get("tables", [])) == len(golden.get("tables", []))

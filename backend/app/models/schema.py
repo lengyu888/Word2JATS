@@ -130,6 +130,7 @@ class ValidationResult(BaseModel):
     jats_schema_valid: bool | None = None
     schema_file: str = ""
     business_rules: dict = Field(default_factory=dict)
+    auto_fix: dict = Field(default_factory=dict)
 
 class QualityIssue(BaseModel):
     level: str

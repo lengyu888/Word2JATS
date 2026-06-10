@@ -57,6 +57,8 @@ def test_convert_endpoint_returns_all_outputs():
     assert payload["article"]["title"] == "面向出版的智能结构化转换"
     assert payload["xml"].startswith("<?xml")
     assert payload["validation"]["passed"] is True
+    assert payload["validation"]["auto_fix"]["attempted"] is True
+    assert isinstance(payload["validation"]["auto_fix"]["applied_fixes"], list)
     assert 0 <= payload["quality_report"]["total_score"] <= 100
     assert "metadata_score" in payload["quality_report"]["scores"]
 
@@ -101,6 +103,7 @@ def test_generate_xml_endpoint_uses_corrected_article():
     assert "<article-title>人工校正后的标题</article-title>" in payload["xml"]
     assert "<title>校正后的章节</title>" in payload["xml"]
     assert payload["validation"]["passed"] is True
+    assert "remaining_schema_errors" in payload["validation"]["auto_fix"]
     assert payload["quality_report"]["issues"] is not None
 
 

@@ -17,9 +17,20 @@
   "jats_schema_valid": null,
   "schema_errors": [],
   "schema_file": "",
-  "business_rules": {"passed": true, "errors": [], "warnings": []}
+  "business_rules": {"passed": true, "errors": [], "warnings": []},
+  "auto_fix": {
+    "attempted": true,
+    "applied_fixes": [],
+    "remaining_schema_errors": [],
+    "before_schema_error_count": 0,
+    "after_schema_error_count": 0
+  }
 }
 ```
+
+`JatsAutoFixer` 根据首次 Schema 错误执行最多两轮白名单修复。目前支持将
+`graphic/@href` 转换为 `xlink:href`、重新排列已知 `journal-meta` 子节点以及
+修复重复 XML ID。修复器不会补写 ISSN、DOI、ORCID 等无法可靠推断的真实数据。
 
 参考文献解析器支持 GB/T 7714 与常见英文期刊启发式拆分。解析字段不完整时允许为空，并通过 `parse_confidence` 提示人工复核；生成器在结构化字段可用时输出 `element-citation`，否则回退 `mixed-citation`。
 
@@ -104,9 +115,11 @@ Article 支持 DOI、文章类型、语言、期刊名称、期刊 ID、出版�
 3. `OmmlConverter` 将常见 Word 原生公式结构转换为 Presentation MathML 和基础 LaTeX。
 4. `DocxParser` 基于节点流提取元数据，并绑定章节、图片、图题、表格、表题、列表、OMML/规则公式和参考文献。
 5. `XrefResolver` 识别正文中的图、表、公式和参考文献引用，`JatsGenerator` 使用 lxml 构建带混合内容 `xref` 的 XML。
-6. `ArticleValidator` 执行业务规则、XML、正式 JATS Schema 及交叉引用目标校验。
-7. `QualityScorer` 生成 0-100 总分、七项分项得分和可定位修复建议。
-8. 请求结束后清理临时文件。
+6. `JatsGenerator` 生成 XML，并执行首次正式 JATS Schema 校验。
+7. `JatsAutoFixer` 根据 Schema 错误执行安全修复并再次校验。
+8. `ArticleValidator` 汇总业务规则、XML、最终 Schema 及交叉引用目标校验。
+9. `QualityScorer` 生成 0-100 总分、七项分项得分和可定位修复建议。
+10. 请求结束后清理临时文件。
 
 ## 测试
 

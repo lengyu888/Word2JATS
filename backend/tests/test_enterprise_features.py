@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.services.jats_generator import JatsGenerator
 from app.services.jats_schema_validator import JatsSchemaValidator
+from app.services.jats_auto_fixer import JatsAutoFixer
 from app.services.profile_loader import ProfileLoader
 from app.services.reference_parser import ReferenceParser
 from app.services.quality_scorer import QualityScorer
@@ -110,3 +111,23 @@ def test_quality_scorer_returns_scores_and_located_issues():
         {"level", "module", "location", "message", "suggestion"} <= set(issue)
         for issue in report["issues"]
     )
+
+
+def test_auto_fixer_reduces_official_dtd_graphic_errors():
+    article = {
+        "title": "Schema fix", "abstract": "Abstract", "keywords": ["a", "b", "c"],
+        "sections": [{"title": "Intro", "paragraphs": ["Text"]}],
+        "authors": [], "affiliations": [], "tables": [], "formulas": [], "lists": [],
+        "references": [], "journal_id": "DEMO", "journal_title": "Demo Journal",
+        "publisher_name": "Demo Publisher",
+        "figures": [{"id": "fig1", "caption": "Figure 1", "path": "media/figure.png"}],
+    }
+    validator = JatsSchemaValidator()
+    xml = JatsGenerator().generate(article)
+    initial = validator.validate(xml)
+
+    fixed_xml, report, final = JatsAutoFixer(validator).fix(xml, initial)
+
+    assert len(final["schema_errors"]) < len(initial["schema_errors"])
+    assert 'xlink:href="media/figure.png"' in fixed_xml
+    assert any(item["code"] == "GRAPHIC_XLINK_HREF" for item in report["applied_fixes"])

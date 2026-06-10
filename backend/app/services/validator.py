@@ -8,14 +8,20 @@ class ArticleValidator:
     def __init__(self, schema_validator: JatsSchemaValidator | None = None):
         self.schema_validator = schema_validator or JatsSchemaValidator()
 
-    def validate(self, article: dict[str, Any], xml: str) -> dict[str, Any]:
+    def validate(
+        self,
+        article: dict[str, Any],
+        xml: str,
+        schema_result: dict[str, Any] | None = None,
+        auto_fix: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         errors: list[str] = []
         warnings: list[str] = []
         xref_checks: list[str] = []
         self._validate_required_content(article, errors)
         self._validate_quality(article, warnings)
         self._validate_xml(xml, errors, warnings, xref_checks)
-        schema = self.schema_validator.validate(xml)
+        schema = schema_result or self.schema_validator.validate(xml)
         business_rules = {
             "passed": not errors,
             "errors": list(errors),
@@ -33,6 +39,13 @@ class ArticleValidator:
             "jats_schema_valid": schema["jats_schema_valid"],
             "schema_file": schema["schema_file"],
             "business_rules": business_rules,
+            "auto_fix": auto_fix or {
+                "attempted": False,
+                "applied_fixes": [],
+                "remaining_schema_errors": list(schema["schema_errors"]),
+                "before_schema_error_count": len(schema["schema_errors"]),
+                "after_schema_error_count": len(schema["schema_errors"]),
+            },
         }
 
     @staticmethod

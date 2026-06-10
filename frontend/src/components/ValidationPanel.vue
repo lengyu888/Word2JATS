@@ -7,6 +7,9 @@ const requiredCheckCount = 10
 const passedCount = computed(() => Math.max(0, requiredCheckCount - props.validation.errors.length))
 const xrefChecks = computed(() => props.validation.xref_checks || [])
 const schemaErrors = computed(() => props.validation.schema_errors || [])
+const autoFix = computed(() => props.validation.auto_fix || {})
+const appliedFixes = computed(() => autoFix.value.applied_fixes || [])
+const remainingSchemaErrors = computed(() => autoFix.value.remaining_schema_errors || schemaErrors.value)
 const schemaStatus = computed(() => {
   if (props.validation.jats_schema_valid === true) return '正式 Schema 校验通过'
   if (props.validation.jats_schema_valid === false) return '正式 Schema 校验失败'
@@ -87,6 +90,30 @@ const schemaStatus = computed(() => {
         />
         <el-alert v-for="error in schemaErrors" :key="error" :title="error" type="warning" show-icon :closable="false" />
       </div>
+      <div class="message-column auto-fixes">
+        <h3>Schema 自动修复 <b>{{ appliedFixes.length }}</b></h3>
+        <el-alert
+          v-if="autoFix.attempted"
+          :title="`已执行白名单修复：Schema 问题 ${autoFix.before_schema_error_count ?? 0} → ${autoFix.after_schema_error_count ?? 0}`"
+          :type="appliedFixes.length ? 'success' : 'info'"
+          show-icon
+          :closable="false"
+        />
+        <el-alert
+          v-for="fix in appliedFixes"
+          :key="`${fix.code}-${fix.location}`"
+          :title="`${fix.code} · ${fix.location}：${fix.message}`"
+          type="success"
+          show-icon
+          :closable="false"
+        />
+        <p v-if="!autoFix.attempted">当前未触发 Schema 自动修复。</p>
+      </div>
+      <div class="message-column manual-schema">
+        <h3>仍需人工处理 <b>{{ remainingSchemaErrors.length }}</b></h3>
+        <el-alert v-for="error in remainingSchemaErrors" :key="error" :title="error" type="warning" show-icon :closable="false" />
+        <p v-if="!remainingSchemaErrors.length">没有剩余 Schema 问题。</p>
+      </div>
     </div>
   </div>
 </template>
@@ -116,6 +143,8 @@ const schemaStatus = computed(() => {
 .message-column.warnings { border-top: 3px solid #d8a126; }
 .message-column.xrefs { border-top: 3px solid #4b83bd; }
 .message-column.schema-errors { border-top: 3px solid #6650a4; }
+.message-column.auto-fixes { border-top: 3px solid #238263; }
+.message-column.manual-schema { border-top: 3px solid #c58a18; }
 h3 { margin: 0 0 14px; color: #283a36; font-size: 15px; }
 h3 b { margin-left: 6px; color: #006d77; }
 .el-alert + .el-alert { margin-top: 8px; }

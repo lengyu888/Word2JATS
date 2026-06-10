@@ -116,6 +116,18 @@ class PackageExporter:
         lines.extend(f"- {item}" for item in validation.get("schema_errors", []))
         if not validation.get("schema_errors"):
             lines.append("- None")
+        auto_fix = validation.get("auto_fix", {})
+        lines.extend([
+            "",
+            "## Schema Auto Fix",
+            "",
+            f"- Attempted: **{auto_fix.get('attempted', False)}**",
+            f"- Schema errors: **{auto_fix.get('before_schema_error_count', 0)} -> {auto_fix.get('after_schema_error_count', 0)}**",
+        ])
+        lines.extend(
+            f"- {item.get('code')}: {item.get('message')} ({item.get('location')})"
+            for item in auto_fix.get("applied_fixes", [])
+        )
         lines.extend(["", "## Cross-reference Checks", ""])
         lines.extend(f"- {item}" for item in validation.get("xref_checks", []))
         if not validation.get("xref_checks"):
