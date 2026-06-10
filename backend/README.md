@@ -47,10 +47,11 @@ Article 支持 DOI、文章类型、语言、期刊名称、期刊 ID、出版�
 ## 处理流程
 
 1. 将上传文件保存到请求级临时目录。
-2. `DocxParser` 按段落顺序提取标题、前置信息、正文结构及文后参考文献，从 DOCX ZIP 的 `word/media` 提取图片，并解析 `document.tables`。
-3. `JatsGenerator` 使用 lxml 构建并格式化 XML。
-4. `ArticleValidator` 执行基础 JATS 结构与出版质量校验。
-5. 请求结束后清理临时文件。
+2. `DocumentFlowParser` 直接读取 `word/document.xml`，按 body 中 `w:p`、`w:tbl` 的真实顺序生成统一节点流，并通过 `document.xml.rels` 解析图片关系。
+3. `DocxParser` 基于节点流提取元数据，并绑定章节、图片、图题、表格、表题、列表、OMML/规则公式和参考文献。
+4. `JatsGenerator` 使用 lxml 构建并格式化 XML。
+5. `ArticleValidator` 执行基础 JATS 结构与出版质量校验。
+6. 请求结束后清理临时文件。
 
 ## 测试
 
@@ -81,10 +82,13 @@ python evaluate.py
 
 - 标题、作者和单位使用启发式评分/关键词识别，复杂稿件可能需要更精细的样式映射。
 - 图片保存到 `backend/temp/<转换ID>/media`，JSON 和 XML 使用相对路径。
+- 文档流解析器识别普通段落、标题段落、章节、图题、表题、列表、含 `w:drawing` 的图片段落、含 `m:oMath/m:oMathPara` 的公式段落和 `w:tbl` 表格。
+- 图片通过 `word/_rels/document.xml.rels` 的 `r:embed` 映射到 `word/media`，不再依赖 ZIP 媒体文件名排序推断位置。
 - 图题支持 `图1`、`图 1`、`图1-1`、`Fig. 1` 和 `Figure 1` 等形式，并按出现顺序与图片绑定。
 - 图片和图题数量不一致时不会报错：多余图片 caption 为空，多余图题生成为无 graphic 的 caption-only figure。
 - Word 表格输出为 `tables` 数组，首行作为 JATS `thead`，其余行作为 `tbody`；支持 `表1`、`表 1`、`Table 1` 表题并按出现顺序绑定。
 - 表格和表题数量不一致时不会报错：多余表格 caption 为空，多余表题生成为 rows 为空的 table 对象。
+- 图片、表格和公式在节点出现时记录当前章节，题注只与同章节对象绑定，避免跨章节误关联。
 - 基础公式识别使用短段落、数学符号/关键词及 Equation/公式样式规则，输出 `id/content/type/section_index` 结构，并生成带 CDATA 的 JATS `disp-formula/tex-math`。
 - 参考文献识别支持“参考文献”与 `References` 标题，以及 `[1]`、`1.`、`（1）` 编号；编号拆入 `label`，清理后的引文保存在 `raw`，XML 输出 `ref-list/ref/label/mixed-citation`。
 - 后续可扩展 Word OMML 转 MathML、LaTeX-OCR 和 Mathpix；当前版本不调用商业公式识别 API。

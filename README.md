@@ -62,6 +62,7 @@ python evaluate.py
 ## 当前支持
 
 - 规则识别标题、作者、单位、摘要、关键词和多级章节
+- 直接解析 DOCX `word/document.xml`，按真实文档顺序生成段落、图片、表格和公式节点流
 - 从 DOCX `word/media` 提取内嵌图片，并识别中英文图题、显式列表、简单公式和参考文献
 - 基于段落长度、数学符号/关键词及 Equation/公式样式识别基础数学公式，并生成带 CDATA 的 JATS `disp-formula`
 - 识别“参考文献”或 `References` 部分，拆分常见编号并生成带 label 的 JATS `ref-list`
@@ -84,8 +85,10 @@ frontend/  Vue 3 单页转换工作台
 
 - 当前使用启发式规则，复杂排版、多人多单位映射可能需要人工校正。
 - 图片会从 DOCX 压缩包的 `word/media` 提取到 `backend/temp`，并在 JSON/XML 中记录相对路径；MVP API 暂不单独提供图片下载接口。
-- 图片和图题按出现顺序绑定。多余图片保留空 caption，多余图题保留为 caption-only figure。
-- 表格与表题按各自在文档中的出现顺序绑定；多余表格保留空 caption，多余表题保留为空 rows 的表格对象。
+- 图片、图题、表格、表题和公式基于 `document.xml` 真实节点流绑定，并记录出现位置对应的 `section_index`。
+- 图片或表格与题注数量不一致时保持宽容：多余对象保留空 caption，多余题注保留为 caption-only 对象，并且不会跨章节错误绑定。
+- 图片通过 `word/_rels/document.xml.rels` 中的 `r:embed` 关系定位真实 `word/media` 文件。
+- Word OMML `m:oMath/m:oMathPara` 会作为公式节点识别；当前 XML 输出仍以原型级文本 `tex-math` 表达。
 - 当前公式识别是基础规则版本，支持常见运算符、希腊字母、`frac`、`sqrt`、`lim`、`log`、`sin`、`cos` 和 Equation/公式样式，并输出带 CDATA 的 `tex-math`。
 - 后续可扩展 Word OMML 转 MathML、LaTeX-OCR，以及 Mathpix 等第三方公式识别方案；当前 MVP 不调用商业 API。
 - 参考文献当前保留清理编号后的原始引文文本，尚未进一步拆分作者、题名、期刊、年份等字段。

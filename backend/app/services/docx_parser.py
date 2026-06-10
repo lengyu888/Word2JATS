@@ -3,8 +3,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from app.services.document_flow_parser import DocumentFlowParser
 
 
 class DocxParser:
@@ -24,86 +23,152 @@ class DocxParser:
         r"^\s*(?P<label>\[\s*\d+\s*\]|\(\s*\d+\s*\)|（\s*\d+\s*）|\d+\s*[.．、])"
         r"\s*(?P<raw>.*)$"
     )
-    FIGURE_RE = re.compile(
-        r"^\s*(?:图\s*\d+(?:\s*[-－—.]\s*\d+)*|fig(?:ure)?\.?\s*\d+(?:\s*[-.]\s*\d+)*)"
-        r"(?:\s+|[:：])?.*$",
-        re.I,
-    )
-    LIST_RE = re.compile(r"^\s*(?:[（(]\d+[）)]|\d+[）)]|[-•·])\s*")
-    TABLE_RE = re.compile(
-        r"^\s*(?:表\s*\d+(?:\s*[-－—.]\s*\d+)*|table\s*\d+(?:\s*[-.]\s*\d+)*)"
-        r"(?:\s+|[:：])?.*$",
-        re.I,
-    )
-    FORMULA_RE = re.compile(
-        r"(=|≈|≤|≥|∑|∫|√|[αβγλμσ]|\\?frac|\\?sqrt|\blim\b|\blog\b|\bsin\b|\bcos\b)",
-        re.I,
-    )
+    FIGURE_RE = DocumentFlowParser.FIGURE_RE
+    TABLE_RE = DocumentFlowParser.TABLE_RE
+    LIST_RE = DocumentFlowParser.LIST_RE
 
     def __init__(self, docx_path: str | Path, media_dir: str | Path):
         self.docx_path = Path(docx_path)
         self.media_dir = Path(media_dir)
 
     def parse(self) -> dict[str, Any]:
-        document = Document(self.docx_path)
-        paragraphs = [paragraph for paragraph in document.paragraphs if paragraph.text.strip()]
+        flow = DocumentFlowParser(self.docx_path).parse()
+        paragraphs = [node for node in flow if node.get("text", "").strip()]
         article = self._empty_article()
-        if not paragraphs:
-            article["figures"] = self._extract_images([])
-            article["tables"] = self._extract_tables(document, [])
-            return article
+        skipped: set[int] = set()
+        if paragraphs:
+            title_index = self._find_title_index(paragraphs)
+            article["title"] = paragraphs[title_index]["text"].strip()
+            author_indexes, affiliation_indexes = self._extract_front_matter(
+                paragraphs, title_index, article
+            )
+            skipped = {
+                paragraphs[index]["flow_index"]
+                for index in {title_index, *author_indexes, *affiliation_indexes}
+            }
+        self._parse_flow_content(flow, article, skipped)
+        return article
 
-        title_index = self._find_title_index(paragraphs)
-        article["title"] = paragraphs[title_index].text.strip()
-        author_indexes, affiliation_indexes = self._extract_front_matter(
-            paragraphs, title_index, article
-        )
-        skipped = {title_index, *author_indexes, *affiliation_indexes}
+    def _parse_flow_content(
+        self, flow: list[dict[str, Any]], article: dict[str, Any], skipped: set[int]
+    ) -> None:
         current_section: dict[str, Any] | None = None
         current_section_index = -1
         abstract_parts: list[str] = []
         in_abstract = False
         in_references = False
-        captions: list[tuple[str, int]] = []
-        table_captions: list[tuple[str, int]] = []
+        unbound_figures: list[int] = []
+        pending_figures: list[int] = []
+        unbound_tables: list[int] = []
+        pending_tables: list[int] = []
 
-        for index, paragraph in enumerate(paragraphs):
-            if index in skipped:
+        for node in flow:
+            if node["flow_index"] in skipped:
                 continue
-            text = paragraph.text.strip()
+            node_type = node["type"]
+            text = node.get("text", "").strip()
+
+            if node_type == "image":
+                in_abstract = False
+                pending_index = self._pop_in_section(
+                    pending_figures, article["figures"], current_section_index
+                )
+                figure_number = (
+                    pending_index + 1
+                    if pending_index is not None
+                    else len(article["figures"]) + 1
+                )
+                path = self._save_flow_image(
+                    node.get("media_path", ""), figure_number
+                )
+                if pending_index is not None:
+                    article["figures"][pending_index].update(
+                        path=path, section_index=current_section_index
+                    )
+                else:
+                    article["figures"].append({
+                        "id": f"fig{len(article['figures']) + 1}",
+                        "caption": "",
+                        "path": path,
+                        "section_index": current_section_index,
+                    })
+                    unbound_figures.append(len(article["figures"]) - 1)
+                continue
+
+            if node_type == "table":
+                in_abstract = False
+                pending_index = self._pop_in_section(
+                    pending_tables, article["tables"], current_section_index
+                )
+                if pending_index is not None:
+                    article["tables"][pending_index].update(
+                        rows=node.get("rows", []), section_index=current_section_index
+                    )
+                else:
+                    article["tables"].append({
+                        "id": f"tab{len(article['tables']) + 1}",
+                        "caption": "",
+                        "rows": node.get("rows", []),
+                        "section_index": current_section_index,
+                    })
+                    unbound_tables.append(len(article["tables"]) - 1)
+                continue
 
             if self.REFERENCE_RE.match(text):
                 in_references = True
                 in_abstract = False
                 continue
             if in_references:
-                article["references"].append(
-                    self._parse_reference(text, len(article["references"]) + 1)
+                if text:
+                    article["references"].append(
+                        self._parse_reference(text, len(article["references"]) + 1)
+                    )
+                continue
+
+            if self.KEYWORD_RE.match(text):
+                in_abstract = False
+                article["keywords"] = self._split_values(
+                    self.KEYWORD_RE.sub("", text, count=1)
                 )
                 continue
-
-            keyword_match = self.KEYWORD_RE.match(text)
-            if keyword_match:
-                in_abstract = False
-                keyword_text = self.KEYWORD_RE.sub("", text, count=1)
-                article["keywords"] = self._split_values(keyword_text)
-                continue
-
-            abstract_match = self.ABSTRACT_RE.match(text)
-            if abstract_match:
+            if self.ABSTRACT_RE.match(text):
                 in_abstract = True
                 abstract_text = self.ABSTRACT_RE.sub("", text, count=1)
                 if abstract_text:
                     abstract_parts.append(abstract_text)
                 continue
 
-            if self.FIGURE_RE.match(text):
+            if node_type == "figure_caption":
                 in_abstract = False
-                captions.append((text, current_section_index))
+                unbound_index = self._pop_in_section(
+                    unbound_figures, article["figures"], current_section_index
+                )
+                if unbound_index is not None:
+                    article["figures"][unbound_index]["caption"] = text
+                else:
+                    article["figures"].append({
+                        "id": f"fig{len(article['figures']) + 1}",
+                        "caption": text,
+                        "path": "",
+                        "section_index": current_section_index,
+                    })
+                    pending_figures.append(len(article["figures"]) - 1)
                 continue
-            if self.TABLE_RE.match(text):
+            if node_type == "table_caption":
                 in_abstract = False
-                table_captions.append((text, current_section_index))
+                unbound_index = self._pop_in_section(
+                    unbound_tables, article["tables"], current_section_index
+                )
+                if unbound_index is not None:
+                    article["tables"][unbound_index]["caption"] = text
+                else:
+                    article["tables"].append({
+                        "id": f"tab{len(article['tables']) + 1}",
+                        "caption": text,
+                        "rows": [],
+                        "section_index": current_section_index,
+                    })
+                    pending_tables.append(len(article["tables"]) - 1)
                 continue
 
             section = self._parse_section_title(text)
@@ -114,10 +179,11 @@ class DocxParser:
                 current_section_index = len(article["sections"]) - 1
                 continue
             if in_abstract:
-                abstract_parts.append(text)
+                if text:
+                    abstract_parts.append(text)
                 continue
 
-            if self._is_list(paragraph, text):
+            if node_type == "list":
                 item = self.LIST_RE.sub("", text, count=1).strip()
                 article["lists"].append({
                     "id": f"list{len(article['lists']) + 1}",
@@ -125,43 +191,41 @@ class DocxParser:
                     "section_index": current_section_index,
                 })
                 continue
-            if self._is_formula(paragraph, text):
+            if node_type == "formula":
                 article["formulas"].append({
                     "id": f"eq{len(article['formulas']) + 1}",
                     "content": text,
-                    "type": "plain_text",
+                    "type": node.get("formula_type", "plain_text"),
                     "section_index": current_section_index,
                 })
                 continue
-            if current_section is not None:
+            if current_section is not None and text:
                 current_section["paragraphs"].append(text)
 
         article["abstract"] = "\n".join(abstract_parts)
-        article["figures"] = self._extract_images(captions)
-        article["tables"] = self._extract_tables(document, table_captions)
-        return article
 
     @staticmethod
     def _empty_article() -> dict[str, Any]:
         return {
             "title": "", "authors": [], "affiliations": [], "abstract": "",
-            "keywords": [], "sections": [], "figures": [], "lists": [],
-            "tables": [], "formulas": [], "references": [],
+            "keywords": [], "sections": [], "figures": [], "tables": [], "lists": [],
+            "formulas": [], "references": [],
         }
 
-    def _find_title_index(self, paragraphs: list[Any]) -> int:
+    def _find_title_index(self, paragraphs: list[dict[str, Any]]) -> int:
         best_index = 0
         best_score = -1.0
         for index, paragraph in enumerate(paragraphs[:10]):
-            text = paragraph.text.strip()
+            text = paragraph["text"].strip()
             score = 0.0
-            if paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER:
+            if paragraph.get("alignment") == "center":
                 score += 4
-            if any(run.bold for run in paragraph.runs):
+            if paragraph.get("bold"):
                 score += 3
-            sizes = [run.font.size.pt for run in paragraph.runs if run.font.size]
-            if sizes:
-                score += min(max(sizes) / 4, 5)
+            if paragraph.get("font_size"):
+                score += min(paragraph["font_size"] / 4, 5)
+            if paragraph.get("type") == "title":
+                score += 5
             if 4 <= len(text) <= 45:
                 score += 2
             if self.ABSTRACT_RE.match(text) or self.KEYWORD_RE.match(text):
@@ -171,13 +235,13 @@ class DocxParser:
         return best_index
 
     def _extract_front_matter(
-        self, paragraphs: list[Any], title_index: int, article: dict[str, Any]
+        self, paragraphs: list[dict[str, Any]], title_index: int, article: dict[str, Any]
     ) -> tuple[set[int], set[int]]:
         author_indexes: set[int] = set()
         affiliation_indexes: set[int] = set()
         window = range(title_index + 1, min(len(paragraphs), title_index + 7))
         for index in window:
-            text = paragraphs[index].text.strip()
+            text = paragraphs[index]["text"].strip()
             lower = text.lower()
             if (
                 self.ABSTRACT_RE.match(text)
@@ -193,12 +257,9 @@ class DocxParser:
             if (
                 not author_indexes
                 and len(text) <= 80
-                and not self.ABSTRACT_RE.match(text)
-                and not self.KEYWORD_RE.match(text)
                 and not self.FIGURE_RE.match(text)
                 and not self.TABLE_RE.match(text)
-                and not self._is_formula(paragraphs[index], text)
-                and not self._parse_section_title(text)
+                and paragraphs[index].get("type") != "formula"
                 and re.search(r"[，,；;\s、]", text)
             ):
                 names = [name for name in re.split(r"[，,；;\s、]+", text) if name]
@@ -224,75 +285,31 @@ class DocxParser:
             return {"title": title.strip(), "level": level, "paragraphs": []}
         return None
 
-    def _is_list(self, paragraph: Any, text: str) -> bool:
-        if self.LIST_RE.match(text):
-            return True
-        properties = paragraph._p.pPr
-        return bool(properties is not None and properties.numPr is not None)
-
-    def _is_formula(self, paragraph: Any, text: str) -> bool:
-        style_name = paragraph.style.name if paragraph.style else ""
-        styled_as_equation = "equation" in style_name.lower() or "公式" in style_name
-        return styled_as_equation or (len(text) <= 60 and bool(self.FORMULA_RE.search(text)))
-
     @staticmethod
     def _split_values(text: str) -> list[str]:
         return [value.strip() for value in re.split(r"[；;，,、]+", text) if value.strip()]
 
-    def _extract_images(self, captions: list[tuple[str, int]]) -> list[dict[str, Any]]:
+    @staticmethod
+    def _pop_in_section(
+        indexes: list[int], items: list[dict[str, Any]], section_index: int
+    ) -> int | None:
+        for position, item_index in enumerate(indexes):
+            if items[item_index].get("section_index", -1) == section_index:
+                indexes.pop(position)
+                return item_index
+        return None
+
+    def _save_flow_image(self, media_path: str, index: int) -> str:
+        if not media_path:
+            return ""
         self.media_dir.mkdir(parents=True, exist_ok=True)
-        image_paths: list[str] = []
+        suffix = Path(media_path).suffix.lower() or ".bin"
+        path = self.media_dir / f"figure_{index}{suffix}"
         with zipfile.ZipFile(self.docx_path) as archive:
-            media_names = sorted(
-                (
-                    name
-                    for name in archive.namelist()
-                    if name.startswith("word/media/") and not name.endswith("/")
-                ),
-                key=self._natural_sort_key,
-            )
-            for index, media_name in enumerate(media_names, start=1):
-                suffix = Path(media_name).suffix.lower() or ".bin"
-                filename = f"figure_{index}{suffix}"
-                path = self.media_dir / filename
-                path.write_bytes(archive.read(media_name))
-                image_paths.append(self._relative_path(path))
-
-        figures = []
-        for index in range(max(len(image_paths), len(captions))):
-            caption, section_index = captions[index] if index < len(captions) else ("", -1)
-            image_path = image_paths[index] if index < len(image_paths) else ""
-            figures.append({
-                "id": f"fig{index + 1}",
-                "caption": caption,
-                "path": image_path,
-                "section_index": section_index,
-            })
-        return figures
-
-    @staticmethod
-    def _extract_tables(
-        document: Any, captions: list[tuple[str, int]]
-    ) -> list[dict[str, Any]]:
-        table_rows = [
-            [[cell.text.strip() for cell in row.cells] for row in table.rows]
-            for table in document.tables
-        ]
-        tables = []
-        for index in range(max(len(table_rows), len(captions))):
-            caption, section_index = captions[index] if index < len(captions) else ("", -1)
-            rows = table_rows[index] if index < len(table_rows) else []
-            tables.append({
-                "id": f"tab{index + 1}",
-                "caption": caption,
-                "rows": rows,
-                "section_index": section_index,
-            })
-        return tables
-
-    @staticmethod
-    def _natural_sort_key(value: str) -> list[Any]:
-        return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", value)]
+            if media_path not in archive.namelist():
+                return ""
+            path.write_bytes(archive.read(media_path))
+        return self._relative_path(path)
 
     def _relative_path(self, path: Path) -> str:
         try:
