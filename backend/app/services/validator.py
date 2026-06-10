@@ -7,10 +7,16 @@ class ArticleValidator:
     def validate(self, article: dict[str, Any], xml: str) -> dict[str, Any]:
         errors: list[str] = []
         warnings: list[str] = []
+        xref_checks: list[str] = []
         self._validate_required_content(article, errors)
         self._validate_quality(article, warnings)
-        self._validate_xml(xml, errors)
-        return {"passed": not errors, "errors": errors, "warnings": warnings}
+        self._validate_xml(xml, errors, warnings, xref_checks)
+        return {
+            "passed": not errors,
+            "errors": errors,
+            "warnings": warnings,
+            "xref_checks": xref_checks,
+        }
 
     @staticmethod
     def _validate_required_content(article: dict[str, Any], errors: list[str]) -> None:
@@ -51,13 +57,18 @@ class ArticleValidator:
                 warnings.append(f"表格 {table_id} 没有数据行。")
         for index, formula in enumerate(article.get("formulas", []), start=1):
             content = (
-                formula.get("content")
+                formula.get("latex")
+                or formula.get("content")
                 or formula.get("tex")
                 or formula.get("plain_text")
                 or ""
             )
             if not content.strip():
                 warnings.append(f"公式 {formula.get('id') or index} 内容为空。")
+            if formula.get("type") == "omml" and not formula.get("mathml", "").strip():
+                warnings.append(
+                    f"公式 {formula.get('id') or index} 的 OMML 无法转换为 MathML，已保留文本回退。"
+                )
         for section in article.get("sections", []):
             if not section.get("paragraphs"):
                 warnings.append(f"章节“{section.get('title', '未命名章节')}”没有正文段落。")
@@ -65,7 +76,9 @@ class ArticleValidator:
             warnings.append("关键词少于 3 个，建议补充关键词。")
 
     @staticmethod
-    def _validate_xml(xml: str, errors: list[str]) -> None:
+    def _validate_xml(
+        xml: str, errors: list[str], warnings: list[str], xref_checks: list[str]
+    ) -> None:
         try:
             root = etree.fromstring(xml.encode("utf-8"))
         except (etree.XMLSyntaxError, ValueError) as exc:
@@ -83,3 +96,28 @@ class ArticleValidator:
         for node_name, message in required_nodes:
             if not root.xpath(f"//*[local-name()='{node_name}']"):
                 errors.append(message)
+
+        ArticleValidator._validate_xrefs(root, warnings, xref_checks)
+
+    @staticmethod
+    def _validate_xrefs(root: Any, warnings: list[str], xref_checks: list[str]) -> None:
+        ids = set(root.xpath("//@id"))
+        xrefs = root.xpath(
+            "//body//xref[@ref-type='fig' or @ref-type='table' or "
+            "@ref-type='disp-formula' or @ref-type='bibr']"
+        )
+        if not xrefs:
+            xref_checks.append("未检测到正文交叉引用。")
+            return
+        for xref in xrefs:
+            rid = xref.get("rid", "")
+            missing = [target for target in rid.split() if target not in ids]
+            if missing:
+                for target in missing:
+                    message = f"交叉引用目标不存在：{target}。"
+                    if message not in warnings:
+                        warnings.append(message)
+            else:
+                message = f"交叉引用检查通过：{rid}。"
+                if message not in xref_checks:
+                    xref_checks.append(message)

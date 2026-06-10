@@ -196,6 +196,9 @@ class DocxParser:
                     "id": f"eq{len(article['formulas']) + 1}",
                     "content": text,
                     "type": node.get("formula_type", "plain_text"),
+                    "omml": node.get("omml", ""),
+                    "mathml": node.get("mathml", ""),
+                    "latex": node.get("latex", ""),
                     "section_index": current_section_index,
                 })
                 continue

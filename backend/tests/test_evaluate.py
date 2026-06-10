@@ -89,10 +89,11 @@ def test_render_report_contains_metrics_and_cases():
 def test_evaluate_dataset_runs_all_committed_goldens():
     results, metrics = evaluate_dataset()
 
-    assert len(results) == 3
+    assert len(results) == 4
     assert {item["sample"] for item in results} == {
         "word2jats_demo.docx",
         "word2jats_feature_acceptance.docx",
         "word2jats_image_edge_cases.docx",
+        "word2jats_omml_formulas.docx",
     }
     assert metrics["xml_valid_rate"] == 1.0

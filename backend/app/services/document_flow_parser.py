@@ -6,6 +6,8 @@ from typing import Any
 
 from lxml import etree
 
+from app.services.omml_converter import OmmlConverter
+
 
 class DocumentFlowParser:
     """Read the DOCX body XML and expose paragraphs and tables in real order."""
@@ -38,6 +40,7 @@ class DocumentFlowParser:
 
     def __init__(self, docx_path: str | Path):
         self.docx_path = Path(docx_path)
+        self.omml_converter = OmmlConverter()
 
     def parse(self) -> list[dict[str, Any]]:
         with zipfile.ZipFile(self.docx_path) as archive:
@@ -80,8 +83,22 @@ class DocumentFlowParser:
                 }
                 for embed in embeds
             ]
-        if paragraph.xpath(".//m:oMath | .//m:oMathPara", namespaces=self.NS):
-            return [{**base, "type": "formula", "formula_type": "omml"}]
+        math_nodes = paragraph.xpath(".//m:oMath", namespaces=self.NS)
+        if math_nodes:
+            formulas = []
+            for math_node in math_nodes:
+                omml = etree.tostring(math_node, encoding="unicode")
+                converted = self.omml_converter.convert(omml)
+                formulas.append({
+                    **base,
+                    "text": self._text(math_node),
+                    "type": "formula",
+                    "formula_type": "omml",
+                    "omml": omml,
+                    "mathml": converted["mathml"],
+                    "latex": converted["latex"],
+                })
+            return formulas
         return [{**base, "type": self._classify_paragraph(paragraph, text, style)}]
 
     def _classify_paragraph(self, paragraph: Any, text: str, style: str) -> str:

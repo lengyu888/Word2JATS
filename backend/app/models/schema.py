@@ -38,6 +38,9 @@ class ArticleList(BaseModel):
 class Formula(BaseModel):
     id: str = ""
     content: str = ""
+    omml: str = ""
+    mathml: str = ""
+    latex: str = ""
     type: str = "plain_text"
     section_index: int = -1
 
@@ -47,7 +50,11 @@ class Formula(BaseModel):
         if not isinstance(value, dict):
             return value
         normalized = dict(value)
-        normalized.setdefault("content", normalized.get("tex") or normalized.get("plain_text") or "")
+        normalized.setdefault(
+            "content",
+            normalized.get("latex") or normalized.get("tex") or normalized.get("plain_text") or "",
+        )
+        normalized.setdefault("latex", normalized.get("tex") or "")
         normalized.setdefault("type", "plain_text")
         return normalized
 
@@ -103,6 +110,7 @@ class ValidationResult(BaseModel):
     passed: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    xref_checks: list[str] = Field(default_factory=list)
 
 
 class ConvertResponse(BaseModel):

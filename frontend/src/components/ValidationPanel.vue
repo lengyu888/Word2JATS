@@ -5,6 +5,7 @@ import { CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
 const props = defineProps({ validation: { type: Object, required: true } })
 const requiredCheckCount = 10
 const passedCount = computed(() => Math.max(0, requiredCheckCount - props.validation.errors.length))
+const xrefChecks = computed(() => props.validation.xref_checks || [])
 </script>
 
 <template>
@@ -33,6 +34,11 @@ const passedCount = computed(() => Math.max(0, requiredCheckCount - props.valida
         <b>{{ validation.warnings.length }}</b>
         <small>建议人工复核</small>
       </div>
+      <div class="metric-card xref">
+        <span>交叉引用检查</span>
+        <b>{{ xrefChecks.length }}</b>
+        <small>正文引用目标检查结果</small>
+      </div>
     </div>
 
     <el-alert
@@ -55,6 +61,11 @@ const passedCount = computed(() => Math.max(0, requiredCheckCount - props.valida
         <el-alert v-for="warning in validation.warnings" :key="warning" :title="warning" type="warning" show-icon :closable="false" />
         <p v-if="!validation.warnings.length">未发现需要人工复核的警告。</p>
       </div>
+      <div class="message-column xrefs">
+        <h3>交叉引用检查 <b>{{ xrefChecks.length }}</b></h3>
+        <el-alert v-for="check in xrefChecks" :key="check" :title="check" type="success" show-icon :closable="false" />
+        <p v-if="!xrefChecks.length">暂无交叉引用检查结果。</p>
+      </div>
     </div>
   </div>
 </template>
@@ -75,11 +86,13 @@ const passedCount = computed(() => Math.max(0, requiredCheckCount - props.valida
 .metric-card.success b { color: #238263; }
 .metric-card.error b { color: #b44732; }
 .metric-card.warning b { color: #c58a18; }
+.metric-card.xref b { color: #376ca6; }
 .success-alert { margin-top: 18px; }
 .message-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 14px; }
 .message-column { padding: 18px; border: 1px solid #e0dccf; background: #fffef9; }
 .message-column.errors { border-top: 3px solid #c45656; }
 .message-column.warnings { border-top: 3px solid #d8a126; }
+.message-column.xrefs { border-top: 3px solid #4b83bd; }
 h3 { margin: 0 0 14px; color: #283a36; font-size: 15px; }
 h3 b { margin-left: 6px; color: #006d77; }
 .el-alert + .el-alert { margin-top: 8px; }

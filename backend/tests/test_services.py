@@ -86,6 +86,9 @@ def test_parser_extracts_core_article_structure(tmp_path):
     assert article["formulas"][0] == {
         "id": "eq1",
         "content": "E = mc²",
+        "omml": "",
+        "mathml": "",
+        "latex": "",
         "type": "plain_text",
         "section_index": 0,
     }

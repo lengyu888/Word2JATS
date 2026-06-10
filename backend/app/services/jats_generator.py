@@ -3,6 +3,8 @@ from typing import Any
 
 from lxml import etree
 
+from app.services.xref_resolver import XrefResolver
+
 
 class JatsGenerator:
     NSMAP = {"mml": "http://www.w3.org/1998/Math/MathML"}
@@ -11,6 +13,9 @@ class JatsGenerator:
         r"^\s*(表\s*\d+(?:\s*[-－—.]\s*\d+)*|table\s*\d+(?:\s*[-.]\s*\d+)*)",
         re.I,
     )
+
+    def __init__(self):
+        self.xref_resolver = XrefResolver()
 
     def generate(self, article: dict[str, Any]) -> str:
         root = etree.Element("article", nsmap=self.NSMAP)
@@ -30,7 +35,7 @@ class JatsGenerator:
             sec.set("sec-type", f"level-{section.get('level', 1)}")
             etree.SubElement(sec, "title").text = section["title"]
             for paragraph in section.get("paragraphs", []):
-                etree.SubElement(sec, "p").text = paragraph
+                self._append_body_paragraph(sec, paragraph)
             section_elements.append(sec)
 
         fallback = section_elements[0] if section_elements else body
@@ -70,17 +75,24 @@ class JatsGenerator:
             list_element = etree.SubElement(parent, "list", id=list_data["id"])
             for item in list_data.get("items", []):
                 item_element = etree.SubElement(list_element, "list-item")
-                etree.SubElement(item_element, "p").text = item
+                self._append_body_paragraph(item_element, item)
         for index, formula in enumerate(article["formulas"], start=1):
             parent = self._parent_for(formula, section_elements, body)
             disp = etree.SubElement(parent, "disp-formula", id=formula.get("id") or f"eq{index}")
+            alternatives = etree.SubElement(disp, "alternatives")
+            if formula.get("mathml"):
+                try:
+                    alternatives.append(etree.fromstring(formula["mathml"].encode("utf-8")))
+                except (etree.XMLSyntaxError, ValueError):
+                    pass
             content = (
-                formula.get("content")
+                formula.get("latex")
+                or formula.get("content")
                 or formula.get("tex")
                 or formula.get("plain_text")
                 or ""
             )
-            etree.SubElement(disp, "tex-math").text = etree.CDATA(content)
+            etree.SubElement(alternatives, "tex-math").text = etree.CDATA(content)
 
         back = etree.SubElement(root, "back")
         ref_list = etree.SubElement(back, "ref-list")
@@ -159,3 +171,8 @@ class JatsGenerator:
     def _parent_for(item: dict[str, Any], sections: list[Any], fallback: Any) -> Any:
         index = item.get("section_index", -1)
         return sections[index] if isinstance(index, int) and 0 <= index < len(sections) else fallback
+
+    def _append_body_paragraph(self, parent: Any, text: str) -> Any:
+        paragraph = etree.SubElement(parent, "p")
+        self.xref_resolver.append_mixed_content(paragraph, text)
+        return paragraph

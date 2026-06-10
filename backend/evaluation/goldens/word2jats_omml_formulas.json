@@ -1,0 +1,11 @@
+{
+  "title": "Word2JATS Word 原生公式转换测试",
+  "abstract": "该文档用于验证 Word 原生 OMML 到 MathML 的基础转换。",
+  "keywords": ["OMML", "MathML", "JATS"],
+  "sections": [
+    {"title": "原生公式"}
+  ],
+  "figures": [],
+  "formulas": [{}],
+  "references": [{}]
+}

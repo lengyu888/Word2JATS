@@ -6,6 +6,7 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import parse_xml
 from docx.shared import Inches, Pt
 
 
@@ -13,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "sample_documents"
 MAIN_OUTPUT = OUTPUT_DIR / "word2jats_feature_acceptance.docx"
 EDGE_OUTPUT = OUTPUT_DIR / "word2jats_image_edge_cases.docx"
+OMML_OUTPUT = OUTPUT_DIR / "word2jats_omml_formulas.docx"
+OMML_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 
 
 def make_png(path: Path, color: tuple[int, int, int], label_band: int) -> None:
@@ -69,6 +72,29 @@ def configure_document(document: Document) -> None:
     section.bottom_margin = Inches(0.8)
     section.left_margin = Inches(1)
     section.right_margin = Inches(1)
+
+
+def add_native_formula(document: Document) -> None:
+    omml = f"""
+    <m:oMathPara xmlns:m="{OMML_NS}">
+      <m:oMath>
+        <m:f><m:num><m:r><m:t>a</m:t></m:r></m:num><m:den><m:r><m:t>b</m:t></m:r></m:den></m:f>
+        <m:r><m:t>+</m:t></m:r>
+        <m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup>
+        <m:r><m:t>+</m:t></m:r>
+        <m:rad><m:e><m:r><m:t>z</m:t></m:r></m:e></m:rad>
+        <m:r><m:t>+</m:t></m:r>
+        <m:nary>
+          <m:naryPr><m:chr m:val="∑"/></m:naryPr>
+          <m:sub><m:r><m:t>i=1</m:t></m:r></m:sub>
+          <m:sup><m:r><m:t>n</m:t></m:r></m:sup>
+          <m:e><m:r><m:t>x</m:t></m:r></m:e>
+        </m:nary>
+      </m:oMath>
+    </m:oMathPara>
+    """.strip()
+    paragraph = document.add_paragraph()
+    paragraph._p.append(parse_xml(omml))
 
 
 def build_main_document() -> Document:
@@ -186,9 +212,27 @@ def build_image_edge_document() -> Document:
     return document
 
 
+def build_omml_document() -> Document:
+    document = Document()
+    configure_document(document)
+    add_title(document, "Word2JATS Word 原生公式转换测试")
+    document.add_paragraph("公式测试作者")
+    document.add_paragraph("未来出版大学")
+    document.add_paragraph("摘要：该文档用于验证 Word 原生 OMML 到 MathML 的基础转换。")
+    document.add_paragraph("关键词：OMML；MathML；JATS")
+    document.add_paragraph("1 原生公式")
+    document.add_paragraph("下方公式包含分数、上标、根号和求和结构。")
+    add_native_formula(document)
+    document.add_paragraph("参考文献")
+    document.add_paragraph("[1] Word 原生公式转换测试参考文献.")
+    return document
+
+
 if __name__ == "__main__":
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     build_main_document().save(MAIN_OUTPUT)
     build_image_edge_document().save(EDGE_OUTPUT)
+    build_omml_document().save(OMML_OUTPUT)
     print(MAIN_OUTPUT)
     print(EDGE_OUTPUT)
+    print(OMML_OUTPUT)

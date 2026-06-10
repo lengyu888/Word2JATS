@@ -48,10 +48,11 @@ Article 支持 DOI、文章类型、语言、期刊名称、期刊 ID、出版�
 
 1. 将上传文件保存到请求级临时目录。
 2. `DocumentFlowParser` 直接读取 `word/document.xml`，按 body 中 `w:p`、`w:tbl` 的真实顺序生成统一节点流，并通过 `document.xml.rels` 解析图片关系。
-3. `DocxParser` 基于节点流提取元数据，并绑定章节、图片、图题、表格、表题、列表、OMML/规则公式和参考文献。
-4. `JatsGenerator` 使用 lxml 构建并格式化 XML。
-5. `ArticleValidator` 执行基础 JATS 结构与出版质量校验。
-6. 请求结束后清理临时文件。
+3. `OmmlConverter` 将常见 Word 原生公式结构转换为 Presentation MathML 和基础 LaTeX。
+4. `DocxParser` 基于节点流提取元数据，并绑定章节、图片、图题、表格、表题、列表、OMML/规则公式和参考文献。
+5. `XrefResolver` 识别正文中的图、表、公式和参考文献引用，`JatsGenerator` 使用 lxml 构建带混合内容 `xref` 的 XML。
+6. `ArticleValidator` 执行基础 JATS 结构、出版质量及交叉引用目标校验。
+7. 请求结束后清理临时文件。
 
 ## 测试
 
@@ -76,7 +77,7 @@ python evaluate.py
 
 阻断性错误包括：标题、摘要、关键词或章节为空，XML 无法解析，以及缺少 JATS `journal-meta`、`article-meta`、`title-group`、`contrib-group`、`body` 或 `back` 节点。
 
-非阻断性警告包括：作者、单位或参考文献为空，图片缺少图题，表格缺少表题或数据行，公式内容为空，作者缺少 ORCID，章节没有正文段落，以及关键词少于 3 个。警告不会令 `passed` 变为 `false`，但建议在正式出版前人工复核。
+非阻断性警告包括：作者、单位或参考文献为空，图片缺少图题，表格缺少表题或数据行，公式内容为空或 OMML 无法转换为 MathML，作者缺少 ORCID，章节没有正文段落，关键词少于 3 个，以及正文交叉引用 `rid` 指向不存在的 XML `id`。警告不会令 `passed` 变为 `false`，但建议在正式出版前人工复核。
 
 ## 当前限制与扩展方向
 
@@ -89,9 +90,13 @@ python evaluate.py
 - Word 表格输出为 `tables` 数组，首行作为 JATS `thead`，其余行作为 `tbody`；支持 `表1`、`表 1`、`Table 1` 表题并按出现顺序绑定。
 - 表格和表题数量不一致时不会报错：多余表格 caption 为空，多余表题生成为 rows 为空的 table 对象。
 - 图片、表格和公式在节点出现时记录当前章节，题注只与同章节对象绑定，避免跨章节误关联。
-- 基础公式识别使用短段落、数学符号/关键词及 Equation/公式样式规则，输出 `id/content/type/section_index` 结构，并生成带 CDATA 的 JATS `disp-formula/tex-math`。
+- 正文交叉引用支持 `图1/图 1/Fig. 1/Figure 1`、`表1/表 1/Table 1`、`式（1）/公式（1）/Eq. (1)` 和 `[1]/[1,2]/[1-3]`。
+- 一个段落可以生成多个 `xref`；参考文献组合与范围引用的 `rid` 使用空格分隔的 IDREFS，例如 `rid="ref1 ref2 ref3"`。
+- Formula 输出 `id/content/omml/mathml/latex/type/section_index`；旧版 `plain_text` 与 `tex` 输入仍会被兼容归一化。
+- OMML 基础转换支持分数、上下标、根号、求和、括号、普通变量和运算符，并生成 JATS `disp-formula/alternatives/mml:math/tex-math`。
+- 基础规则公式继续使用短段落、数学符号/关键词及 Equation/公式样式识别，并作为 `tex-math` 回退输出。
 - 参考文献识别支持“参考文献”与 `References` 标题，以及 `[1]`、`1.`、`（1）` 编号；编号拆入 `label`，清理后的引文保存在 `raw`，XML 输出 `ref-list/ref/label/mixed-citation`。
-- 后续可扩展 Word OMML 转 MathML、LaTeX-OCR 和 Mathpix；当前版本不调用商业公式识别 API。
+- 后续可扩展矩阵、多行公式、重音符号等 OMML 结构，以及 LaTeX-OCR 和 Mathpix；当前版本不调用商业公式识别 API。
 - 参考文献尚未拆分为作者、文章题名、期刊名、年份等细粒度 JATS 元素。
 - XML 根节点输出 JATS 1.4、语言与文章类型属性，front 包含 `journal-meta` 和 `article-meta`，并支持 DOI、出版日期、学科及作者-单位 xref。
 - 当前输出更接近 JATS Publishing 结构，但校验仍为原型级节点检查，尚未使用正式 JATS Publishing DTD/XSD。

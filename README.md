@@ -36,10 +36,12 @@ npm run dev
 sample_documents/word2jats_demo.docx
 sample_documents/word2jats_feature_acceptance.docx
 sample_documents/word2jats_image_edge_cases.docx
+sample_documents/word2jats_omml_formulas.docx
 ```
 
 - `word2jats_feature_acceptance.docx`：覆盖当前主要功能，包含图片、图题、公式、参考文献，以及中英文表题和 Word 表格。
 - `word2jats_image_edge_cases.docx`：包含 3 张图片和 2 个图题，用于测试多余图片 caption 为空。
+- `word2jats_omml_formulas.docx`：包含 Word 原生 OMML 分数、上标、根号和求和结构，用于测试 MathML 转换。
 
 也可以重新生成测试稿件：
 
@@ -65,12 +67,14 @@ python evaluate.py
 - 直接解析 DOCX `word/document.xml`，按真实文档顺序生成段落、图片、表格和公式节点流
 - 从 DOCX `word/media` 提取内嵌图片，并识别中英文图题、显式列表、简单公式和参考文献
 - 基于段落长度、数学符号/关键词及 Equation/公式样式识别基础数学公式，并生成带 CDATA 的 JATS `disp-formula`
+- 提取 Word 原生 OMML，并将常见结构转换为 Presentation MathML 与基础 LaTeX，输出 JATS `alternatives`
 - 识别“参考文献”或 `References` 部分，拆分常见编号并生成带 label 的 JATS `ref-list`
 - 解析 Word 表格，按顺序绑定 `表1`、`表 1`、`Table 1` 等表题，并生成 JATS `table-wrap/table/thead/tbody`
+- 识别正文中的图、表、公式和参考文献引用，并生成 JATS `xref` 混合内容节点
 - 生成更接近 JATS Publishing 1.4 的 `journal-meta/article-meta/body/back` 结构，支持 DOI、语言、文章类型、期刊、出版者、学科、出版日期及作者-单位关联
 - 生成格式化 JATS 风格 XML，正确转义 XML 特殊字符
 - 校验标题、摘要、关键词、章节、XML 合法性，以及 JATS `journal-meta`、`article-meta`、`title-group`、`contrib-group`、`body` 和 `back` 节点
-- 提示作者、单位、参考文献、图题、表题、空表格、公式内容、ORCID、空章节和关键词数量等出版质量问题
+- 提示作者、单位、参考文献、图题、表题、空表格、公式内容、ORCID、空章节、关键词数量和无效交叉引用等出版质量问题
 - 提供 XML 复制与下载
 - 支持人工校正结构化数据并重新生成 XML
 
@@ -88,9 +92,13 @@ frontend/  Vue 3 单页转换工作台
 - 图片、图题、表格、表题和公式基于 `document.xml` 真实节点流绑定，并记录出现位置对应的 `section_index`。
 - 图片或表格与题注数量不一致时保持宽容：多余对象保留空 caption，多余题注保留为 caption-only 对象，并且不会跨章节错误绑定。
 - 图片通过 `word/_rels/document.xml.rels` 中的 `r:embed` 关系定位真实 `word/media` 文件。
-- Word OMML `m:oMath/m:oMathPara` 会作为公式节点识别；当前 XML 输出仍以原型级文本 `tex-math` 表达。
+- Word OMML `m:oMath/m:oMathPara` 会保留原始 `omml`，并生成 `mathml`、`latex` 与文本回退字段。
+- 当前 OMML 转换支持分数、上标、下标、根号、求和、括号、普通变量和运算符；JATS 输出包含 `alternatives/mml:math/tex-math`。
+- 无法转换为 MathML 的 OMML 仍保留 `tex-math` 或纯文本，并在校验结果中给出非阻断性 warning。
+- 正文引用支持 `图1`、`Fig. 1`、`表1`、`Table 1`、`式（1）`、`Eq. (1)`、`[1]`、`[1,2]` 和 `[1-3]`。组合参考文献引用使用空格分隔的 JATS `rid` IDREFS。
+- 交叉引用校验检查正文 `xref` 的每个 `rid` 是否指向已有 XML `id`；无法解析的目标作为非阻断性 warning 展示。
 - 当前公式识别是基础规则版本，支持常见运算符、希腊字母、`frac`、`sqrt`、`lim`、`log`、`sin`、`cos` 和 Equation/公式样式，并输出带 CDATA 的 `tex-math`。
-- 后续可扩展 Word OMML 转 MathML、LaTeX-OCR，以及 Mathpix 等第三方公式识别方案；当前 MVP 不调用商业 API。
+- 后续可扩展更多 OMML 结构、LaTeX-OCR，以及 Mathpix 等第三方公式识别方案；当前 MVP 不调用商业 API。
 - 参考文献当前保留清理编号后的原始引文文本，尚未进一步拆分作者、题名、期刊、年份等字段。
 - 当前输出更接近 JATS Publishing 结构，但校验仍为原型级结构检查，尚未接入正式 JATS DTD/XSD 校验。
 - 列表优先识别 Word 编号属性及常见文本前缀，暂未保留嵌套层级。

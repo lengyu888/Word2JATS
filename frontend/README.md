@@ -41,10 +41,11 @@ npm run build
 - XML 复制和浏览器下载
 - 错误、警告和统计信息展示
 - 校验面板展示通过项、错误项和警告项数量，并按绿色、红色、黄色区分状态
+- 校验面板独立展示正文交叉引用检查结果，并将不存在的引用目标作为黄色警告展示
 - 人工校正文章结构并重新生成 XML
 - 结构化 JSON 展示提取后的 figures，人工校正页可编辑图片 caption 和相对路径
 - 结构化 JSON 展示 tables，人工校正页可编辑表题、二维 rows 和 section_index，并重新生成 `table-wrap`
-- 结构化 JSON 展示 formulas，人工校正页可编辑公式内容并重新生成 `disp-formula`
+- 结构化 JSON 展示 formulas 的 `content/omml/mathml/latex/type`，人工校正页可编辑后重新生成 `disp-formula/alternatives`
 - 结构化 JSON 展示 `id/label/raw` references，人工校正页可编辑后重新生成 `ref-list`
 - 人工校正页支持 DOI、文章类型、语言、期刊、出版者、学科和出版日期等 JATS Publishing 元数据
 - 作者可在 authors JSON 中使用 `affiliation_ids` 编辑与 `aff1`、`aff2` 等单位的关联
