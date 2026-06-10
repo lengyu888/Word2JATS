@@ -143,8 +143,8 @@ def build_main_document() -> Document:
 
     document.add_paragraph("参考文献")
     document.add_paragraph("[1] 张三, 李四. 学术出版结构化技术研究[J]. 数字出版, 2025, 10(2): 1-8.")
-    document.add_paragraph("[2] National Information Standards Organization. JATS: Journal Article Tag Suite[S].")
-    document.add_paragraph("[3] 王五. Word 文档智能解析方法研究[J]. 出版科学, 2026, 34(1): 20-28.")
+    document.add_paragraph("2. National Information Standards Organization. JATS: Journal Article Tag Suite[S].")
+    document.add_paragraph("（3）王五. Word 文档智能解析方法研究[J]. 出版科学, 2026, 34(1): 20-28.")
     return document
 
 
@@ -163,7 +163,7 @@ def build_image_edge_document() -> Document:
     add_picture(document, "edge_3.png", (52, 92, 128), 2)
     document.add_paragraph("图1 第一张图片")
     document.add_paragraph("Figure 2 Second image")
-    document.add_paragraph("参考文献")
+    document.add_paragraph("References")
     document.add_paragraph("[1] 图片边界测试参考文献.")
     return document
 

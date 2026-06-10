@@ -109,3 +109,24 @@ def test_generate_xml_endpoint_accepts_legacy_formula_fields():
     assert response.status_code == 200
     assert '<disp-formula id="eq1">' in response.json()["xml"]
     assert "<![CDATA[E = mc²]]>" in response.json()["xml"]
+
+
+def test_generate_xml_endpoint_normalizes_legacy_reference_raw():
+    response = client.post(
+        "/api/generate-xml",
+        json={
+            "article": {
+                "title": "参考文献兼容测试",
+                "abstract": "摘要",
+                "keywords": ["参考文献", "JATS", "测试"],
+                "sections": [{"title": "引言", "paragraphs": ["正文"]}],
+                "references": [{"raw": "[1] Legacy citation."}],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    xml = response.json()["xml"]
+    assert '<ref id="ref1">' in xml
+    assert "<label>[1]</label>" in xml
+    assert "<mixed-citation>Legacy citation.</mixed-citation>" in xml

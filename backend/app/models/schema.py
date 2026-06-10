@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -43,7 +45,26 @@ class Formula(BaseModel):
 
 
 class Reference(BaseModel):
+    id: str = ""
+    label: str = ""
     raw: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_reference(cls, value):
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        raw = normalized.get("raw", "")
+        if not normalized.get("label") and isinstance(raw, str):
+            match = re.match(
+                r"^\s*(\[\s*\d+\s*\]|\(\s*\d+\s*\)|（\s*\d+\s*）|\d+\s*[.．、])\s*(.*)$",
+                raw,
+            )
+            if match:
+                normalized["label"] = match.group(1).strip()
+                normalized["raw"] = match.group(2).strip()
+        return normalized
 
 
 class Article(BaseModel):

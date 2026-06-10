@@ -71,6 +71,8 @@ python -m pytest -q
 - 图题支持 `图1`、`图 1`、`图1-1`、`Fig. 1` 和 `Figure 1` 等形式，并按出现顺序与图片绑定。
 - 图片和图题数量不一致时不会报错：多余图片 caption 为空，多余图题生成为无 graphic 的 caption-only figure。
 - 基础公式识别使用短段落、数学符号/关键词及 Equation/公式样式规则，输出 `id/content/type/section_index` 结构，并生成带 CDATA 的 JATS `disp-formula/tex-math`。
+- 参考文献识别支持“参考文献”与 `References` 标题，以及 `[1]`、`1.`、`（1）` 编号；编号拆入 `label`，清理后的引文保存在 `raw`，XML 输出 `ref-list/ref/label/mixed-citation`。
 - 后续可扩展 Word OMML 转 MathML、LaTeX-OCR 和 Mathpix；当前版本不调用商业公式识别 API。
+- 参考文献尚未拆分为作者、文章题名、期刊名、年份等细粒度 JATS 元素。
 - 当前是 JATS 思路的 XML，不包含正式 DTD/XSD 校验。
 - 可扩展图片静态资源接口、转换结果 ZIP、标准 JATS 校验、表格解析和异步任务队列。

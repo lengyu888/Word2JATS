@@ -50,8 +50,10 @@ class JatsGenerator:
 
         back = etree.SubElement(root, "back")
         ref_list = etree.SubElement(back, "ref-list")
+        etree.SubElement(ref_list, "title").text = "References"
         for index, reference in enumerate(article["references"], start=1):
-            ref = etree.SubElement(ref_list, "ref", id=f"ref{index}")
+            ref = etree.SubElement(ref_list, "ref", id=reference.get("id") or f"ref{index}")
+            etree.SubElement(ref, "label").text = reference.get("label") or f"[{index}]"
             etree.SubElement(ref, "mixed-citation").text = reference["raw"]
         return etree.tostring(
             root, encoding="unicode", pretty_print=True, xml_declaration=False

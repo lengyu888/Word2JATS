@@ -44,6 +44,7 @@ npm run build
 - 人工校正文章结构并重新生成 XML
 - 结构化 JSON 展示提取后的 figures，人工校正页可编辑图片 caption 和相对路径
 - 结构化 JSON 展示 formulas，人工校正页可编辑公式内容并重新生成 `disp-formula`
+- 结构化 JSON 展示 `id/label/raw` references，人工校正页可编辑后重新生成 `ref-list`
 - 响应式布局
 
 ## 后续扩展方向

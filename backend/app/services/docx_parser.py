@@ -19,7 +19,11 @@ class DocxParser:
     )
     ABSTRACT_RE = re.compile(r"^\s*(摘要|摘\s*要|abstract)\s*[:：]?\s*", re.I)
     KEYWORD_RE = re.compile(r"^\s*(关键词|关\s*键\s*词|key\s*words?|keywords)\s*[:：]?\s*", re.I)
-    REFERENCE_RE = re.compile(r"^\s*(参考文献|references)\s*[:：]?\s*$", re.I)
+    REFERENCE_RE = re.compile(r"^\s*(?:参考\s*文献|references?)\s*[:：]?\s*$", re.I)
+    REFERENCE_LABEL_RE = re.compile(
+        r"^\s*(?P<label>\[\s*\d+\s*\]|\(\s*\d+\s*\)|（\s*\d+\s*）|\d+\s*[.．、])"
+        r"\s*(?P<raw>.*)$"
+    )
     FIGURE_RE = re.compile(
         r"^\s*(?:图\s*\d+(?:\s*[-－—.]\s*\d+)*|fig(?:ure)?\.?\s*\d+(?:\s*[-.]\s*\d+)*)"
         r"(?:\s+|[:：])?.*$",
@@ -66,7 +70,9 @@ class DocxParser:
                 in_abstract = False
                 continue
             if in_references:
-                article["references"].append({"raw": text})
+                article["references"].append(
+                    self._parse_reference(text, len(article["references"]) + 1)
+                )
                 continue
 
             keyword_match = self.KEYWORD_RE.match(text)
@@ -161,6 +167,13 @@ class DocxParser:
         for index in window:
             text = paragraphs[index].text.strip()
             lower = text.lower()
+            if (
+                self.ABSTRACT_RE.match(text)
+                or self.KEYWORD_RE.match(text)
+                or self.REFERENCE_RE.match(text)
+                or self._parse_section_title(text)
+            ):
+                break
             if any(word in lower for word in self.AFFILIATION_WORDS):
                 article["affiliations"].append(text)
                 affiliation_indexes.add(index)
@@ -179,6 +192,12 @@ class DocxParser:
                 article["authors"] = [{"name": name, "orcid": ""} for name in names]
                 author_indexes.add(index)
         return author_indexes, affiliation_indexes
+
+    def _parse_reference(self, text: str, index: int) -> dict[str, str]:
+        match = self.REFERENCE_LABEL_RE.match(text)
+        label = match.group("label").strip() if match else ""
+        raw = match.group("raw").strip() if match else text.strip()
+        return {"id": f"ref{index}", "label": label, "raw": raw}
 
     def _parse_section_title(self, text: str) -> dict[str, Any] | None:
         for pattern in self.SECTION_PATTERNS:

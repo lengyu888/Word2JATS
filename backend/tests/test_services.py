@@ -89,7 +89,11 @@ def test_parser_extracts_core_article_structure(tmp_path):
         "type": "plain_text",
         "section_index": 0,
     }
-    assert article["references"][0]["raw"].startswith("[1]")
+    assert article["references"][0] == {
+        "id": "ref1",
+        "label": "[1]",
+        "raw": "张三. 智能出版研究[J]. 2026.",
+    }
 
 
 def test_generator_produces_parseable_jats():
@@ -114,6 +118,75 @@ def test_generator_produces_parseable_jats():
     assert '<disp-formula id="eq1">' in xml
     assert "<![CDATA[E = mc²]]>" in xml
     assert result["passed"] is True
+
+
+def test_parser_recognizes_reference_heading_and_common_labels(tmp_path):
+    path = tmp_path / "references.docx"
+    document = Document()
+    title = document.add_paragraph("参考文献解析测试")
+    title.alignment = 1
+    title.runs[0].bold = True
+    document.add_paragraph("摘要：测试参考文献解析。")
+    document.add_paragraph("关键词：参考文献；JATS；测试")
+    document.add_paragraph("1 引言")
+    document.add_paragraph("正文内容。")
+    document.add_paragraph(" References： ")
+    document.add_paragraph("[1] Zhang S. Structured publishing[J]. 2025.")
+    document.add_paragraph("2. Li S. JATS conversion[J]. 2026.")
+    document.add_paragraph("（3）王五. 数字出版研究[J]. 2026.")
+    document.add_paragraph("No label reference entry.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["references"] == [
+        {
+            "id": "ref1",
+            "label": "[1]",
+            "raw": "Zhang S. Structured publishing[J]. 2025.",
+        },
+        {
+            "id": "ref2",
+            "label": "2.",
+            "raw": "Li S. JATS conversion[J]. 2026.",
+        },
+        {
+            "id": "ref3",
+            "label": "（3）",
+            "raw": "王五. 数字出版研究[J]. 2026.",
+        },
+        {
+            "id": "ref4",
+            "label": "",
+            "raw": "No label reference entry.",
+        },
+    ]
+
+
+def test_generator_builds_labeled_reference_list():
+    article = {
+        "title": "参考文献测试",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "摘要",
+        "keywords": ["参考文献", "JATS", "测试"],
+        "sections": [{"title": "引言", "level": 1, "paragraphs": ["正文"]}],
+        "figures": [],
+        "lists": [],
+        "formulas": [],
+        "references": [
+            {"id": "ref1", "label": "[1]", "raw": "First citation."},
+            {"id": "ref2", "label": "2.", "raw": "Second citation."},
+        ],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert "<ref-list>" in xml
+    assert "<title>References</title>" in xml
+    assert '<ref id="ref1">' in xml
+    assert "<label>[1]</label>" in xml
+    assert "<mixed-citation>First citation.</mixed-citation>" in xml
 
 
 def test_parser_recognizes_formula_symbols_keywords_and_equation_style(tmp_path):

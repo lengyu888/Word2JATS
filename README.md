@@ -53,6 +53,7 @@ python scripts/generate_sample_docx.py
 - 规则识别标题、作者、单位、摘要、关键词和多级章节
 - 从 DOCX `word/media` 提取内嵌图片，并识别中英文图题、显式列表、简单公式和参考文献
 - 基于段落长度、数学符号/关键词及 Equation/公式样式识别基础数学公式，并生成带 CDATA 的 JATS `disp-formula`
+- 识别“参考文献”或 `References` 部分，拆分常见编号并生成带 label 的 JATS `ref-list`
 - 生成格式化 JATS 风格 XML，正确转义 XML 特殊字符
 - 校验标题、摘要、关键词、章节、XML 合法性，以及 JATS `article-meta` 和 `body` 节点
 - 提示作者、单位、参考文献、图题、公式内容、ORCID、空章节和关键词数量等出版质量问题
@@ -73,6 +74,7 @@ frontend/  Vue 3 单页转换工作台
 - 图片和图题按出现顺序绑定。多余图片保留空 caption，多余图题保留为 caption-only figure。
 - 当前公式识别是基础规则版本，支持常见运算符、希腊字母、`frac`、`sqrt`、`lim`、`log`、`sin`、`cos` 和 Equation/公式样式，并输出带 CDATA 的 `tex-math`。
 - 后续可扩展 Word OMML 转 MathML、LaTeX-OCR，以及 Mathpix 等第三方公式识别方案；当前 MVP 不调用商业 API。
+- 参考文献当前保留清理编号后的原始引文文本，尚未进一步拆分作者、题名、期刊、年份等字段。
 - 列表优先识别 Word 编号属性及常见文本前缀，暂未保留嵌套层级。
 - 后续可增加 JATS DTD/XSD 校验、DOCX/XML/图片打包下载、在线结构编辑、引用拆分与批量转换。
 
