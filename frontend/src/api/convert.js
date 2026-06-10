@@ -12,7 +12,19 @@ export async function convertDocument(file) {
   return response.data
 }
 
+export async function batchConvertDocuments(files) {
+  const formData = new FormData()
+  files.forEach((file) => formData.append('files', file))
+  const response = await client.post('/batch-convert', formData)
+  return response.data
+}
+
 export async function generateXml(article) {
   const response = await client.post('/generate-xml', { article })
+  return response.data
+}
+
+export async function exportPackage(payload) {
+  const response = await client.post('/export-package', payload, { responseType: 'blob' })
   return response.data
 }

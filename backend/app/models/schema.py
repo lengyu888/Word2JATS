@@ -128,3 +128,26 @@ class GenerateXmlResponse(BaseModel):
     success: bool
     xml: str
     validation: ValidationResult
+
+
+class BatchConvertItem(BaseModel):
+    filename: str
+    status: str
+    article: Article | None = None
+    xml: str = ""
+    validation: ValidationResult | None = None
+    media_paths: list[str] = Field(default_factory=list)
+    error: str = ""
+
+
+class BatchConvertResponse(BaseModel):
+    success: bool
+    results: list[BatchConvertItem] = Field(default_factory=list)
+
+
+class ExportPackageRequest(BaseModel):
+    filename: str = "article.docx"
+    article: Article
+    xml: str
+    media_paths: list[str] = Field(default_factory=list)
+    validation: ValidationResult

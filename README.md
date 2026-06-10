@@ -26,7 +26,7 @@ npm install
 npm run dev
 ```
 
-浏览器访问 `http://localhost:5173`。选择 `.docx` 文件并点击“开始转换”，即可查看结构化 JSON、JATS XML 和校验结果，并下载 XML。
+浏览器访问 `http://localhost:5173`。可以选择一个或多个 `.docx` 文件并点击“开始批量转换”，随后查看每篇稿件的状态、结构化 JSON、JATS XML 和校验结果。
 
 转换完成后，可以进入“人工校正”标签页修改标题、摘要、关键词、作者、单位、章节、图题、表格和参考文献。点击“重新生成 XML”后，系统会基于校正后的文章数据更新 XML 与校验结果。
 
@@ -76,6 +76,8 @@ python evaluate.py
 - 校验标题、摘要、关键词、章节、XML 合法性，以及 JATS `journal-meta`、`article-meta`、`title-group`、`contrib-group`、`body` 和 `back` 节点
 - 提示作者、单位、参考文献、图题、表题、空表格、公式内容、ORCID、空章节、关键词数量和无效交叉引用等出版质量问题
 - 提供 XML 复制与下载
+- 支持多文件批量转换，逐篇展示成功、失败、警告数和错误数
+- 支持下载单篇 XML，以及包含 XML、JSON、校验报告、媒体文件和 manifest 的 ZIP 结果包
 - 支持人工校正结构化数据并重新生成 XML
 
 ## 项目结构
@@ -102,6 +104,21 @@ frontend/  Vue 3 单页转换工作台
 - 参考文献当前保留清理编号后的原始引文文本，尚未进一步拆分作者、题名、期刊、年份等字段。
 - 当前输出更接近 JATS Publishing 结构，但校验仍为原型级结构检查，尚未接入正式 JATS DTD/XSD 校验。
 - 列表优先识别 Word 编号属性及常见文本前缀，暂未保留嵌套层级。
-- 后续可增加 JATS DTD/XSD 校验、DOCX/XML/图片打包下载、在线结构编辑、引用拆分与批量转换。
+- 后续可增加 JATS DTD/XSD 校验、在线结构编辑、细粒度引用拆分与批量任务历史。
+- 当前批量转换按上传顺序逐篇执行，适合比赛原型；大规模任务可进一步扩展异步队列、进度查询和结果过期清理。
+
+## ZIP 结果包
+
+批量转换列表中的每篇成功稿件均可下载独立 ZIP 包，内容包括：
+
+```text
+article.xml
+article.json
+validation_report.md
+manifest.json
+media/
+```
+
+ZIP 导出只允许读取后端转换临时目录中的媒体文件，不接受任意本地路径。
 
 更详细的服务说明见 [backend/README.md](backend/README.md) 和 [frontend/README.md](frontend/README.md)。

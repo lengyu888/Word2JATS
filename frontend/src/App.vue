@@ -6,25 +6,65 @@ import JsonViewer from './components/JsonViewer.vue'
 import XmlViewer from './components/XmlViewer.vue'
 import ValidationPanel from './components/ValidationPanel.vue'
 import CorrectionEditor from './components/CorrectionEditor.vue'
-import { convertDocument, generateXml } from './api/convert'
+import BatchResults from './components/BatchResults.vue'
+import { batchConvertDocuments, exportPackage, generateXml } from './api/convert'
 
 const loading = ref(false)
 const regenerating = ref(false)
 const result = ref(null)
+const batchResults = ref([])
 const activeTab = ref('json')
 const sectionCount = computed(() => result.value?.article.sections.length || 0)
 const referenceCount = computed(() => result.value?.article.references.length || 0)
 
-async function convert(file) {
+async function convert(files) {
   loading.value = true
   try {
-    result.value = await convertDocument(file)
+    const batch = await batchConvertDocuments(files)
+    batchResults.value = batch.results
+    result.value = batch.results.find((item) => item.status === 'success') || null
     activeTab.value = 'json'
-    ElMessage.success('文档转换完成')
+    ElMessage.success(`批量转换完成：${batch.results.filter((item) => item.status === 'success').length}/${batch.results.length} 成功`)
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '转换失败，请检查后端服务和文档格式')
   } finally {
     loading.value = false
+  }
+}
+
+function selectResult(item) {
+  result.value = item
+  activeTab.value = 'json'
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function downloadXml(item) {
+  downloadBlob(
+    new Blob([item.xml], { type: 'application/xml;charset=utf-8' }),
+    `${item.filename.replace(/\.docx$/i, '') || 'article'}.xml`,
+  )
+}
+
+async function downloadPackage(item) {
+  try {
+    const blob = await exportPackage({
+      filename: item.filename,
+      article: item.article,
+      xml: item.xml,
+      media_paths: item.media_paths || [],
+      validation: item.validation,
+    })
+    downloadBlob(blob, `${item.filename.replace(/\.docx$/i, '') || 'article'}-word2jats.zip`)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || 'ZIP 结果包生成失败')
   }
 }
 
@@ -38,6 +78,9 @@ async function regenerate(article) {
       xml: generated.xml,
       validation: generated.validation,
     }
+    batchResults.value = batchResults.value.map((item) => (
+      item.filename === result.value.filename ? result.value : item
+    ))
     activeTab.value = 'xml'
     ElMessage.success('XML 已根据人工校正内容重新生成')
   } catch (error) {
@@ -69,6 +112,13 @@ async function regenerate(article) {
       </section>
 
       <UploadPanel :loading="loading" @convert="convert" />
+      <BatchResults
+        v-if="batchResults.length"
+        :results="batchResults"
+        @select="selectResult"
+        @download-xml="downloadXml"
+        @download-package="downloadPackage"
+      />
 
       <section v-if="result" class="results">
         <div class="result-heading">

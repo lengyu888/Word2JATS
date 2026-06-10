@@ -6,20 +6,24 @@ const props = defineProps({
   loading: Boolean,
 })
 const emit = defineEmits(['convert'])
-const selectedFile = ref(null)
+const selectedFiles = ref([])
 
-const fileLabel = computed(() => selectedFile.value?.name || '尚未选择文档')
+const fileLabel = computed(() => (
+  selectedFiles.value.length
+    ? `已选择 ${selectedFiles.value.length} 个文档`
+    : '尚未选择文档'
+))
 
-function handleChange(uploadFile) {
-  selectedFile.value = uploadFile.raw
+function handleChange(uploadFile, uploadFiles) {
+  selectedFiles.value = uploadFiles.map((item) => item.raw).filter(Boolean)
 }
 
-function handleRemove() {
-  selectedFile.value = null
+function handleRemove(uploadFile, uploadFiles) {
+  selectedFiles.value = uploadFiles.map((item) => item.raw).filter(Boolean)
 }
 
 function convert() {
-  if (selectedFile.value) emit('convert', selectedFile.value)
+  if (selectedFiles.value.length) emit('convert', selectedFiles.value)
 }
 </script>
 
@@ -36,15 +40,15 @@ function convert() {
       drag
       action="#"
       accept=".docx"
+      multiple
       :auto-upload="false"
-      :limit="1"
       :on-change="handleChange"
       :on-remove="handleRemove"
       class="uploader"
     >
       <el-icon class="upload-icon"><DocumentAdd /></el-icon>
-      <div class="drop-title">拖入 .docx 文件</div>
-      <div class="drop-subtitle">或点击浏览本地稿件</div>
+      <div class="drop-title">拖入一个或多个 .docx 文件</div>
+      <div class="drop-subtitle">支持批量转换，或点击浏览本地稿件</div>
     </el-upload>
 
     <div class="action-row">
@@ -53,11 +57,11 @@ function convert() {
         type="primary"
         size="large"
         :loading="props.loading"
-        :disabled="!selectedFile"
+        :disabled="!selectedFiles.length"
         @click="convert"
       >
         <el-icon><MagicStick /></el-icon>
-        开始转换
+        开始批量转换
       </el-button>
     </div>
   </section>

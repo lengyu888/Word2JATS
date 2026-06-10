@@ -19,13 +19,33 @@ uvicorn app.main:app --reload --port 8000
 - 健康检查：`GET http://127.0.0.1:8000/api/health`
 - Swagger 文档：`http://127.0.0.1:8000/docs`
 - 转换接口：`POST http://127.0.0.1:8000/api/convert`
+- 批量转换接口：`POST http://127.0.0.1:8000/api/batch-convert`
 - 人工校正后生成 XML：`POST http://127.0.0.1:8000/api/generate-xml`
+- ZIP 结果包导出：`POST http://127.0.0.1:8000/api/export-package`
 
 转换接口使用 `multipart/form-data`，字段名为 `file`，仅接受 `.docx`。
 
 ```bash
 curl -F "file=@paper.docx" http://127.0.0.1:8000/api/convert
 ```
+
+批量转换使用重复的 `files` 字段。每个文件独立返回 `status/article/xml/validation/media_paths/error`，单篇失败不会中断整个批次：
+
+```bash
+curl -F "files=@paper-1.docx" -F "files=@paper-2.docx" http://127.0.0.1:8000/api/batch-convert
+```
+
+`export-package` 接收单篇稿件的 `article`、`xml`、`media_paths` 和 `validation`，返回 ZIP 流。结果包包含：
+
+```text
+article.xml
+article.json
+validation_report.md
+manifest.json
+media/
+```
+
+为避免路径逃逸，媒体文件只允许来自 `backend/temp` 转换目录。
 
 `generate-xml` 接口接收经过人工校正的结构化文章：
 
@@ -101,4 +121,5 @@ python evaluate.py
 - XML 根节点输出 JATS 1.4、语言与文章类型属性，front 包含 `journal-meta` 和 `article-meta`，并支持 DOI、出版日期、学科及作者-单位 xref。
 - 当前输出更接近 JATS Publishing 结构，但校验仍为原型级节点检查，尚未使用正式 JATS Publishing DTD/XSD。
 - 当前是 JATS 思路的 XML，不包含正式 DTD/XSD 校验。
-- 可扩展图片静态资源接口、转换结果 ZIP、标准 JATS 校验、复杂合并单元格处理和异步任务队列。
+- 可扩展图片静态资源接口、标准 JATS 校验、复杂合并单元格处理和异步任务队列。
+- 当前批量转换为请求内顺序处理；生产环境可扩展任务队列、并发限制、进度查询、鉴权和临时结果定期清理。

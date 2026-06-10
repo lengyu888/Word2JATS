@@ -1,4 +1,7 @@
 from fastapi.testclient import TestClient
+from io import BytesIO
+import json
+import zipfile
 
 from app.main import app
 from tests.test_services import build_sample_docx
@@ -184,3 +187,116 @@ def test_generate_xml_endpoint_accepts_tables():
     assert response.status_code == 200
     payload = response.json()
     assert '<table-wrap id="tab1">' in payload["xml"]
+
+
+def test_batch_convert_returns_success_and_failure_per_file():
+    response = client.post(
+        "/api/batch-convert",
+        files=[
+            (
+                "files",
+                (
+                    "sample.docx",
+                    build_sample_docx(),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+            ),
+            ("files", ("invalid.txt", b"not a docx", "text/plain")),
+        ],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is False
+    assert len(payload["results"]) == 2
+    assert payload["results"][0]["filename"] == "sample.docx"
+    assert payload["results"][0]["status"] == "success"
+    assert payload["results"][0]["article"]["title"] == "面向出版的智能结构化转换"
+    assert payload["results"][1]["filename"] == "invalid.txt"
+    assert payload["results"][1]["status"] == "failed"
+    assert "仅支持 .docx 文件" in payload["results"][1]["error"]
+
+
+def test_export_package_contains_required_files_and_media(tmp_path):
+    media = tmp_path / "figure.png"
+    media.write_bytes(b"png-content")
+    from app.routers.convert import TEMP_ROOT
+
+    package_media = TEMP_ROOT / "test-export" / "media" / "figure.png"
+    package_media.parent.mkdir(parents=True, exist_ok=True)
+    package_media.write_bytes(media.read_bytes())
+    payload = {
+        "filename": "sample.docx",
+        "article": {
+            "title": "打包测试",
+            "abstract": "摘要",
+            "keywords": ["ZIP", "JATS", "测试"],
+            "sections": [{"title": "结果", "paragraphs": ["正文"]}],
+            "figures": [{"id": "fig1", "caption": "图1", "path": str(package_media)}],
+        },
+        "xml": "<?xml version=\"1.0\"?><article/>",
+        "media_paths": [str(package_media)],
+        "validation": {"passed": True, "errors": [], "warnings": [], "xref_checks": []},
+    }
+
+    response = client.post("/api/export-package", json=payload)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        assert set(archive.namelist()) == {
+            "article.xml",
+            "article.json",
+            "validation_report.md",
+            "media/",
+            "media/figure.png",
+            "manifest.json",
+        }
+        article = json.loads(archive.read("article.json"))
+        manifest = json.loads(archive.read("manifest.json"))
+        assert article["title"] == "打包测试"
+        assert manifest["source_filename"] == "sample.docx"
+        assert "media/figure.png" in manifest["files"]
+
+
+def test_export_package_keeps_empty_media_directory():
+    response = client.post(
+        "/api/export-package",
+        json={
+            "article": {
+                "title": "无媒体打包测试",
+                "abstract": "摘要",
+                "keywords": ["ZIP", "JATS", "测试"],
+                "sections": [{"title": "结果", "paragraphs": ["正文"]}],
+            },
+            "xml": "<article/>",
+            "media_paths": [],
+            "validation": {"passed": True, "errors": [], "warnings": []},
+        },
+    )
+
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        assert "media/" in archive.namelist()
+
+
+def test_export_package_rejects_media_outside_temp_root(tmp_path):
+    outside = tmp_path / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+
+    response = client.post(
+        "/api/export-package",
+        json={
+            "article": {
+                "title": "安全测试",
+                "abstract": "摘要",
+                "keywords": ["ZIP", "JATS", "测试"],
+                "sections": [{"title": "结果", "paragraphs": ["正文"]}],
+            },
+            "xml": "<article/>",
+            "media_paths": [str(outside)],
+            "validation": {"passed": True, "errors": [], "warnings": []},
+        },
+    )
+
+    assert response.status_code == 400
+    assert "媒体路径不允许访问" in response.json()["detail"]
