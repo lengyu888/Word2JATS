@@ -4,6 +4,7 @@ from typing import Any
 from lxml import etree
 
 from app.services.xref_resolver import XrefResolver
+from app.services.profile_loader import ProfileLoader
 
 
 class JatsGenerator:
@@ -14,10 +15,12 @@ class JatsGenerator:
         re.I,
     )
 
-    def __init__(self):
+    def __init__(self, profile: dict[str, Any] | None = None):
         self.xref_resolver = XrefResolver()
+        self.profile = profile or {}
 
     def generate(self, article: dict[str, Any]) -> str:
+        article = ProfileLoader.apply_metadata(article, self.profile)
         root = etree.Element("article", nsmap=self.NSMAP)
         root.set("article-type", article.get("article_type") or "research-article")
         root.set("dtd-version", "1.4")
@@ -100,7 +103,12 @@ class JatsGenerator:
         for index, reference in enumerate(article["references"], start=1):
             ref = etree.SubElement(ref_list, "ref", id=reference.get("id") or f"ref{index}")
             etree.SubElement(ref, "label").text = reference.get("label") or f"[{index}]"
-            etree.SubElement(ref, "mixed-citation").text = reference["raw"]
+            if self._has_structured_reference(reference):
+                self._build_element_citation(ref, reference)
+            else:
+                etree.SubElement(ref, "mixed-citation").text = (
+                    reference.get("mixed_citation") or reference.get("raw", "")
+                )
         return etree.tostring(
             root, encoding="unicode", pretty_print=True, xml_declaration=False
         ).join(("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n", ""))
@@ -176,3 +184,31 @@ class JatsGenerator:
         paragraph = etree.SubElement(parent, "p")
         self.xref_resolver.append_mixed_content(paragraph, text)
         return paragraph
+
+    @staticmethod
+    def _has_structured_reference(reference: dict[str, Any]) -> bool:
+        return bool(reference.get("article_title") or reference.get("source") or reference.get("year"))
+
+    @staticmethod
+    def _build_element_citation(parent: Any, reference: dict[str, Any]) -> None:
+        citation = etree.SubElement(
+            parent,
+            "element-citation",
+            attrib={"publication-type": reference.get("publication_type") or "journal"},
+        )
+        if reference.get("authors"):
+            person_group = etree.SubElement(citation, "person-group", attrib={"person-group-type": "author"})
+            for author in reference["authors"]:
+                name = etree.SubElement(person_group, "name")
+                surname, given = JatsGenerator._split_name(author)
+                etree.SubElement(name, "surname").text = surname
+                etree.SubElement(name, "given-names").text = given
+        field_map = (
+            ("article_title", "article-title"), ("source", "source"), ("year", "year"),
+            ("volume", "volume"), ("issue", "issue"), ("fpage", "fpage"), ("lpage", "lpage"),
+        )
+        for field, tag in field_map:
+            if reference.get(field):
+                etree.SubElement(citation, tag).text = str(reference[field])
+        if reference.get("doi"):
+            etree.SubElement(citation, "pub-id", attrib={"pub-id-type": "doi"}).text = reference["doi"]

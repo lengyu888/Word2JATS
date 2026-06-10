@@ -1,0 +1,14 @@
+profile_name: IMR journal
+journal_title: Intelligent Media Research
+journal_id: IMR
+publisher_name: IMR Editorial Office
+article_type: research-article
+lang: en
+subject: Intelligent media
+title_styles: [Title, Article Title, IMR Title]
+abstract_markers: [Abstract]
+keyword_markers: [Keywords, Index Terms]
+figure_caption_patterns: ['^\s*(?:Fig\.?|Figure)\s*\d+']
+table_caption_patterns: ['^\s*Table\s*\d+']
+reference_style: english-journal
+default_license: CC BY 4.0

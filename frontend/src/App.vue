@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import UploadPanel from './components/UploadPanel.vue'
 import JsonViewer from './components/JsonViewer.vue'
@@ -7,20 +7,30 @@ import XmlViewer from './components/XmlViewer.vue'
 import ValidationPanel from './components/ValidationPanel.vue'
 import CorrectionEditor from './components/CorrectionEditor.vue'
 import BatchResults from './components/BatchResults.vue'
-import { batchConvertDocuments, exportPackage, generateXml } from './api/convert'
+import QualityReport from './components/QualityReport.vue'
+import { batchConvertDocuments, exportPackage, generateXml, getProfiles } from './api/convert'
 
 const loading = ref(false)
 const regenerating = ref(false)
 const result = ref(null)
 const batchResults = ref([])
 const activeTab = ref('json')
+const profiles = ref([])
 const sectionCount = computed(() => result.value?.article.sections.length || 0)
 const referenceCount = computed(() => result.value?.article.references.length || 0)
 
-async function convert(files) {
+onMounted(async () => {
+  try {
+    profiles.value = await getProfiles()
+  } catch {
+    profiles.value = [{ id: 'default', label: 'Default prototype', lang: 'zh' }]
+  }
+})
+
+async function convert(files, profile) {
   loading.value = true
   try {
-    const batch = await batchConvertDocuments(files)
+    const batch = await batchConvertDocuments(files, profile)
     batchResults.value = batch.results
     result.value = batch.results.find((item) => item.status === 'success') || null
     activeTab.value = 'json'
@@ -111,7 +121,7 @@ async function regenerate(article) {
         <p>无需商业 API，使用可解释的规则算法从 Word 稿件中提取出版语义，并生成面向 JATS 的 XML。</p>
       </section>
 
-      <UploadPanel :loading="loading" @convert="convert" />
+      <UploadPanel :loading="loading" :profiles="profiles" @convert="convert" />
       <BatchResults
         v-if="batchResults.length"
         :results="batchResults"
@@ -143,6 +153,7 @@ async function regenerate(article) {
           <el-tab-pane label="结构化 JSON" name="json"><JsonViewer :data="result.article" /></el-tab-pane>
           <el-tab-pane label="JATS XML" name="xml"><XmlViewer :xml="result.xml" /></el-tab-pane>
           <el-tab-pane label="校验结果" name="validation"><ValidationPanel :validation="result.validation" /></el-tab-pane>
+          <el-tab-pane label="质量报告" name="quality"><QualityReport :validation="result.validation" /></el-tab-pane>
         </el-tabs>
       </section>
 

@@ -92,11 +92,10 @@ def test_parser_extracts_core_article_structure(tmp_path):
         "type": "plain_text",
         "section_index": 0,
     }
-    assert article["references"][0] == {
-        "id": "ref1",
-        "label": "[1]",
-        "raw": "张三. 智能出版研究[J]. 2026.",
-    }
+    assert article["references"][0]["id"] == "ref1"
+    assert article["references"][0]["label"] == "[1]"
+    assert article["references"][0]["raw"] == "张三. 智能出版研究[J]. 2026."
+    assert article["references"][0]["article_title"] == "智能出版研究"
 
 
 def test_generator_produces_parseable_jats():
@@ -144,7 +143,10 @@ def test_parser_recognizes_reference_heading_and_common_labels(tmp_path):
 
     article = DocxParser(path, tmp_path / "media").parse()
 
-    assert article["references"] == [
+    assert [
+        {key: reference[key] for key in ("id", "label", "raw")}
+        for reference in article["references"]
+    ] == [
         {
             "id": "ref1",
             "label": "[1]",

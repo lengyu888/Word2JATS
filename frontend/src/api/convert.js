@@ -5,18 +5,25 @@ const client = axios.create({
   timeout: 120000,
 })
 
-export async function convertDocument(file) {
+export async function convertDocument(file, profile = 'default') {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('profile', profile)
   const response = await client.post('/convert', formData)
   return response.data
 }
 
-export async function batchConvertDocuments(files) {
+export async function batchConvertDocuments(files, profile = 'default') {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
+  formData.append('profile', profile)
   const response = await client.post('/batch-convert', formData)
   return response.data
+}
+
+export async function getProfiles() {
+  const response = await client.get('/profiles')
+  return response.data.profiles
 }
 
 export async function generateXml(article) {

@@ -69,10 +69,14 @@ function parseArray(label, value) {
   return parsed
 }
 
+function cloneArticle(article) {
+  return JSON.parse(JSON.stringify(article))
+}
+
 function regenerate() {
   try {
     const corrected = {
-      ...structuredClone(props.article),
+      ...cloneArticle(props.article),
       title: form.title.trim(),
       doi: form.doi.trim(),
       article_type: form.articleType.trim() || 'research-article',
@@ -182,7 +186,7 @@ function regenerate() {
         <el-form-item label="数学公式 formulas">
           <el-input v-model="form.formulasJson" type="textarea" :rows="14" />
         </el-form-item>
-        <el-form-item label="参考文献 references" class="wide">
+        <el-form-item label="参考文献 references（支持 authors/article_title/source/year/doi 等细粒度字段）" class="wide">
           <el-input v-model="form.referencesJson" type="textarea" :rows="10" />
         </el-form-item>
       </div>

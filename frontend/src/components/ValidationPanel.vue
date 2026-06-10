@@ -6,6 +6,12 @@ const props = defineProps({ validation: { type: Object, required: true } })
 const requiredCheckCount = 10
 const passedCount = computed(() => Math.max(0, requiredCheckCount - props.validation.errors.length))
 const xrefChecks = computed(() => props.validation.xref_checks || [])
+const schemaErrors = computed(() => props.validation.schema_errors || [])
+const schemaStatus = computed(() => {
+  if (props.validation.jats_schema_valid === true) return '正式 Schema 校验通过'
+  if (props.validation.jats_schema_valid === false) return '正式 Schema 校验失败'
+  return '正式 Schema 未配置'
+})
 </script>
 
 <template>
@@ -39,6 +45,11 @@ const xrefChecks = computed(() => props.validation.xref_checks || [])
         <b>{{ xrefChecks.length }}</b>
         <small>正文引用目标检查结果</small>
       </div>
+      <div class="metric-card schema">
+        <span>JATS SCHEMA</span>
+        <b>{{ validation.jats_schema_valid === true ? 'PASS' : validation.jats_schema_valid === false ? 'FAIL' : 'N/A' }}</b>
+        <small>{{ validation.schema_file || 'backend/schemas 未配置' }}</small>
+      </div>
     </div>
 
     <el-alert
@@ -66,6 +77,16 @@ const xrefChecks = computed(() => props.validation.xref_checks || [])
         <el-alert v-for="check in xrefChecks" :key="check" :title="check" type="success" show-icon :closable="false" />
         <p v-if="!xrefChecks.length">暂无交叉引用检查结果。</p>
       </div>
+      <div class="message-column schema-errors">
+        <h3>JATS Schema 校验 <b>{{ schemaErrors.length }}</b></h3>
+        <el-alert
+          :title="schemaStatus"
+          :type="validation.jats_schema_valid === true ? 'success' : validation.jats_schema_valid === false ? 'error' : 'info'"
+          show-icon
+          :closable="false"
+        />
+        <el-alert v-for="error in schemaErrors" :key="error" :title="error" type="warning" show-icon :closable="false" />
+      </div>
     </div>
   </div>
 </template>
@@ -87,12 +108,14 @@ const xrefChecks = computed(() => props.validation.xref_checks || [])
 .metric-card.error b { color: #b44732; }
 .metric-card.warning b { color: #c58a18; }
 .metric-card.xref b { color: #376ca6; }
+.metric-card.schema b { color: #6650a4; font-size: 25px; }
 .success-alert { margin-top: 18px; }
 .message-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 14px; }
 .message-column { padding: 18px; border: 1px solid #e0dccf; background: #fffef9; }
 .message-column.errors { border-top: 3px solid #c45656; }
 .message-column.warnings { border-top: 3px solid #d8a126; }
 .message-column.xrefs { border-top: 3px solid #4b83bd; }
+.message-column.schema-errors { border-top: 3px solid #6650a4; }
 h3 { margin: 0 0 14px; color: #283a36; font-size: 15px; }
 h3 b { margin-left: 6px; color: #006d77; }
 .el-alert + .el-alert { margin-top: 8px; }

@@ -1,5 +1,28 @@
 # Word2JATS Backend
 
+## Profile 与正式 JATS Schema
+
+`POST /api/convert` 和 `POST /api/batch-convert` 接受 multipart 字段 `profile`，可用值由 `GET /api/profiles` 返回。配置文件位于 `backend/profiles/*.yaml`，可定义期刊元数据、标题样式、摘要/关键词标记、图表题正则、参考文献风格和默认许可。
+
+正式校验支持本地 RNG、XSD 或 DTD。请将官方 JATS Publishing 1.4 完整发行包放入 `backend/schemas/`；如目录中存在多个模块，启动前设置 `JATS_SCHEMA_PATH` 指向主 schema。未配置时返回 `jats_schema_valid: null`，不会宣称正式合规。
+
+为保持旧接口兼容，顶层 `passed` 表示 XML 合法且业务规则通过；正式 JATS
+合规性必须单独查看 `jats_schema_valid` 与 `schema_errors`。
+
+校验响应保持原有 `passed/errors/warnings/xref_checks`，并新增：
+
+```json
+{
+  "xml_well_formed": true,
+  "jats_schema_valid": null,
+  "schema_errors": [],
+  "schema_file": "",
+  "business_rules": {"passed": true, "errors": [], "warnings": []}
+}
+```
+
+参考文献解析器支持 GB/T 7714 与常见英文期刊启发式拆分。解析字段不完整时允许为空，并通过 `parse_confidence` 提示人工复核；生成器在结构化字段可用时输出 `element-citation`，否则回退 `mixed-citation`。
+
 FastAPI 后端负责接收 Word 文档、执行规则解析、生成 JATS 风格 XML，并返回基础校验结果。服务无数据库、无商业 API 依赖，适合作为比赛原型和后续算法迭代基线。
 
 ## 技术栈
@@ -81,6 +104,11 @@ python -m pytest -q
 ```
 
 测试覆盖核心解析规则、XML 生成、校验器、健康检查、转换接口、人工校正生成接口和错误文件类型。
+
+`pytest.ini` 只收集 `tests/`，跳过 `backend/temp/`，将测试临时文件固定到
+项目根目录下按当前 Windows 用户隔离的 `.pytest-tmp-<用户名>/`，并禁用非必要
+的 pytest 缓存插件。这可避免不同账户共用系统临时目录、转换目录或旧缓存目录
+时因 ACL 权限导致 `WinError 5`。
 
 ## 批量评测
 

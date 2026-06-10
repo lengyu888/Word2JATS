@@ -16,6 +16,21 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
+def test_profiles_endpoint_and_convert_profile_parameter():
+    profiles = client.get("/api/profiles")
+    assert profiles.status_code == 200
+    assert any(item["id"] == "english_journal" for item in profiles.json()["profiles"])
+
+    response = client.post(
+        "/api/convert",
+        data={"profile": "english_journal"},
+        files={"file": ("sample.docx", build_sample_docx(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert response.status_code == 200
+    assert response.json()["article"]["profile"] == "english_journal"
+    assert response.json()["article"]["lang"] == "en"
+
+
 def test_convert_endpoint_returns_all_outputs():
     response = client.post(
         "/api/convert",

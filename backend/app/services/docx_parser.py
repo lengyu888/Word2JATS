@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from app.services.document_flow_parser import DocumentFlowParser
+from app.services.profile_loader import ProfileLoader
+from app.services.reference_parser import ReferenceParser
 
 
 class DocxParser:
@@ -27,9 +29,28 @@ class DocxParser:
     TABLE_RE = DocumentFlowParser.TABLE_RE
     LIST_RE = DocumentFlowParser.LIST_RE
 
-    def __init__(self, docx_path: str | Path, media_dir: str | Path):
+    def __init__(
+        self, docx_path: str | Path, media_dir: str | Path, profile: dict[str, Any] | None = None
+    ):
         self.docx_path = Path(docx_path)
         self.media_dir = Path(media_dir)
+        self.profile = profile or {}
+        self.reference_parser = ReferenceParser()
+        self.abstract_re = self._marker_regex(
+            self.profile.get("abstract_markers"), self.ABSTRACT_RE
+        )
+        self.keyword_re = self._marker_regex(
+            self.profile.get("keyword_markers"), self.KEYWORD_RE
+        )
+        self.figure_patterns = self._compile_patterns(
+            self.profile.get("figure_caption_patterns")
+        )
+        self.table_patterns = self._compile_patterns(
+            self.profile.get("table_caption_patterns")
+        )
+        self.title_styles = {
+            str(style).casefold() for style in self.profile.get("title_styles", [])
+        }
 
     def parse(self) -> dict[str, Any]:
         flow = DocumentFlowParser(self.docx_path).parse()
@@ -47,7 +68,7 @@ class DocxParser:
                 for index in {title_index, *author_indexes, *affiliation_indexes}
             }
         self._parse_flow_content(flow, article, skipped)
-        return article
+        return ProfileLoader.apply_metadata(article, self.profile)
 
     def _parse_flow_content(
         self, flow: list[dict[str, Any]], article: dict[str, Any], skipped: set[int]
@@ -67,6 +88,10 @@ class DocxParser:
                 continue
             node_type = node["type"]
             text = node.get("text", "").strip()
+            if self._matches_any(self.figure_patterns, text):
+                node_type = "figure_caption"
+            elif self._matches_any(self.table_patterns, text):
+                node_type = "table_caption"
 
             if node_type == "image":
                 in_abstract = False
@@ -125,15 +150,15 @@ class DocxParser:
                     )
                 continue
 
-            if self.KEYWORD_RE.match(text):
+            if self.keyword_re.match(text):
                 in_abstract = False
                 article["keywords"] = self._split_values(
-                    self.KEYWORD_RE.sub("", text, count=1)
+                    self.keyword_re.sub("", text, count=1)
                 )
                 continue
-            if self.ABSTRACT_RE.match(text):
+            if self.abstract_re.match(text):
                 in_abstract = True
-                abstract_text = self.ABSTRACT_RE.sub("", text, count=1)
+                abstract_text = self.abstract_re.sub("", text, count=1)
                 if abstract_text:
                     abstract_parts.append(abstract_text)
                 continue
@@ -229,9 +254,11 @@ class DocxParser:
                 score += min(paragraph["font_size"] / 4, 5)
             if paragraph.get("type") == "title":
                 score += 5
+            if str(paragraph.get("style", "")).casefold() in self.title_styles:
+                score += 5
             if 4 <= len(text) <= 45:
                 score += 2
-            if self.ABSTRACT_RE.match(text) or self.KEYWORD_RE.match(text):
+            if self.abstract_re.match(text) or self.keyword_re.match(text):
                 score -= 8
             if score > best_score:
                 best_index, best_score = index, score
@@ -247,8 +274,8 @@ class DocxParser:
             text = paragraphs[index]["text"].strip()
             lower = text.lower()
             if (
-                self.ABSTRACT_RE.match(text)
-                or self.KEYWORD_RE.match(text)
+                self.abstract_re.match(text)
+                or self.keyword_re.match(text)
                 or self.REFERENCE_RE.match(text)
                 or self._parse_section_title(text)
             ):
@@ -270,11 +297,23 @@ class DocxParser:
                 author_indexes.add(index)
         return author_indexes, affiliation_indexes
 
-    def _parse_reference(self, text: str, index: int) -> dict[str, str]:
-        match = self.REFERENCE_LABEL_RE.match(text)
-        label = match.group("label").strip() if match else ""
-        raw = match.group("raw").strip() if match else text.strip()
-        return {"id": f"ref{index}", "label": label, "raw": raw}
+    def _parse_reference(self, text: str, index: int) -> dict[str, Any]:
+        return self.reference_parser.parse(text, index)
+
+    @staticmethod
+    def _marker_regex(markers: list[str] | None, fallback: re.Pattern) -> re.Pattern:
+        if not markers:
+            return fallback
+        choices = "|".join(re.escape(marker) for marker in markers)
+        return re.compile(rf"^\s*(?:{choices})\s*[:：]?\s*", re.I)
+
+    @staticmethod
+    def _compile_patterns(patterns: list[str] | None) -> list[re.Pattern]:
+        return [re.compile(pattern, re.I) for pattern in (patterns or [])]
+
+    @staticmethod
+    def _matches_any(patterns: list[re.Pattern], text: str) -> bool:
+        return any(pattern.match(text) for pattern in patterns)
 
     def _parse_section_title(self, text: str) -> dict[str, Any] | None:
         for pattern in self.SECTION_PATTERNS:

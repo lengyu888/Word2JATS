@@ -1,5 +1,12 @@
 # Word2JATS
 
+## 企业出版增强
+
+- 上传时可选择 `default`、中文期刊、英文期刊或 IMR 期刊 Profile；Profile 会影响摘要/关键词/图表题识别，并补齐期刊元数据。
+- 参考文献会保留 `raw` 与 `mixed_citation`，并尝试解析作者、题名、来源、年份、卷期页码、DOI、出版类型和置信度；有结构化字段时输出 JATS `element-citation`。
+- 校验结果分为 XML 合法性、正式 JATS Schema、业务规则和引用完整性。正式 Schema 未配置时明确返回 `jats_schema_valid: null`。
+- 官方 JATS Publishing 1.4 文件不内置在仓库中。请将完整 RNG/XSD/DTD 发行包放入 `backend/schemas/`，多模块发行包可通过 `JATS_SCHEMA_PATH` 指定主文件。
+
 Word2JATS 是一个面向学术出版的智能结构化转换原型。用户上传 `.docx` 学术论文后，系统使用可解释的规则算法提取文章结构，生成中间 JSON、JATS 风格 XML，并执行基础完整性校验。
 
 ## 技术栈

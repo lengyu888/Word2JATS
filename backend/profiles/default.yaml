@@ -1,0 +1,14 @@
+profile_name: Default prototype
+journal_title: Word2JATS Demo Journal
+journal_id: W2J
+publisher_name: Word2JATS Publishing Lab
+article_type: research-article
+lang: zh
+subject: Academic publishing
+title_styles: [Title, 标题]
+abstract_markers: [摘要, 摘 要, Abstract]
+keyword_markers: [关键词, 关键 词, Keywords, Key words]
+figure_caption_patterns: ['^\s*图\s*\d+(?:\s*[-—]\s*\d+)*', '^\s*(?:Fig\.?|Figure)\s*\d+']
+table_caption_patterns: ['^\s*表\s*\d+(?:\s*[-—]\s*\d+)*', '^\s*Table\s*\d+']
+reference_style: auto
+default_license: ''

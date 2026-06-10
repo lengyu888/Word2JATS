@@ -1,0 +1,14 @@
+profile_name: English journal
+journal_title: International Research Journal
+journal_id: EN-DEMO
+publisher_name: Academic Publishing Center
+article_type: research-article
+lang: en
+subject: Research
+title_styles: [Title, Article Title]
+abstract_markers: [Abstract]
+keyword_markers: [Keywords, Key words]
+figure_caption_patterns: ['^\s*(?:Fig\.?|Figure)\s*\d+']
+table_caption_patterns: ['^\s*Table\s*\d+']
+reference_style: english-journal
+default_license: ''

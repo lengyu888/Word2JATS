@@ -1,5 +1,12 @@
 # Word2JATS Frontend
 
+## 企业出版增强界面
+
+- 上传区可选择期刊 Profile，并将 Profile 随单篇或批量转换请求提交。
+- 校验面板单独展示 JATS Schema 状态与 `schema_errors`。
+- “质量报告”Tab 汇总 XML 合法性、JATS Schema、业务完整性和引用完整性。
+- 人工校正页的 references JSON 支持编辑作者、题名、来源、年份、卷期页码、DOI、出版类型和解析置信度。
+
 Vue 3 单页前端提供 `.docx` 上传、转换状态反馈、结构化 JSON/JATS XML 审阅、校验结果展示，以及 XML 复制与下载。
 
 ## 技术栈

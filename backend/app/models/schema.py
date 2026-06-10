@@ -63,6 +63,18 @@ class Reference(BaseModel):
     id: str = ""
     label: str = ""
     raw: str = ""
+    mixed_citation: str = ""
+    authors: list[str] = Field(default_factory=list)
+    article_title: str = ""
+    source: str = ""
+    year: str = ""
+    volume: str = ""
+    issue: str = ""
+    fpage: str = ""
+    lpage: str = ""
+    doi: str = ""
+    publication_type: str = ""
+    parse_confidence: float = 0.0
 
     @model_validator(mode="before")
     @classmethod
@@ -79,6 +91,7 @@ class Reference(BaseModel):
             if match:
                 normalized["label"] = match.group(1).strip()
                 normalized["raw"] = match.group(2).strip()
+        normalized.setdefault("mixed_citation", normalized.get("raw", ""))
         return normalized
 
 
@@ -94,6 +107,7 @@ class Article(BaseModel):
     pub_year: str = ""
     pub_month: str = ""
     pub_day: str = ""
+    profile: str = "default"
     authors: list[Author] = Field(default_factory=list)
     affiliations: list[str] = Field(default_factory=list)
     abstract: str = ""
@@ -110,7 +124,12 @@ class ValidationResult(BaseModel):
     passed: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    schema_errors: list[str] = Field(default_factory=list)
     xref_checks: list[str] = Field(default_factory=list)
+    xml_well_formed: bool = False
+    jats_schema_valid: bool | None = None
+    schema_file: str = ""
+    business_rules: dict = Field(default_factory=dict)
 
 
 class ConvertResponse(BaseModel):

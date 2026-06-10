@@ -234,6 +234,14 @@ def render_report(results: list[dict[str, Any]], metrics: dict[str, float]) -> s
 def main() -> None:
     results, metrics = evaluate_dataset()
     report = render_report(results, metrics)
+    report += """
+
+## 企业出版能力补充
+
+当前系统支持期刊 Profile、参考文献细粒度解析和本地 JATS Publishing 1.4
+RNG/XSD/DTD 校验。`xml_valid_rate` 仅表示 XML 可解析；正式 JATS 合规率需要
+在 `backend/schemas/` 配置官方 Schema 后作为独立指标统计。
+"""
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(report, encoding="utf-8")
     print(f"已评测 {len(results)} 个样本。")

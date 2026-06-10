@@ -90,6 +90,8 @@ class PackageExporter:
             f"- Passed: **{'Yes' if validation.get('passed') else 'No'}**",
             f"- Errors: **{len(validation.get('errors', []))}**",
             f"- Warnings: **{len(validation.get('warnings', []))}**",
+            f"- XML well formed: **{validation.get('xml_well_formed', 'Unknown')}**",
+            f"- JATS schema valid: **{validation.get('jats_schema_valid', 'Not configured')}**",
             "",
             "## Errors",
             "",
@@ -100,6 +102,10 @@ class PackageExporter:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {item}" for item in validation.get("warnings", []))
         if not validation.get("warnings"):
+            lines.append("- None")
+        lines.extend(["", "## JATS Schema Errors", ""])
+        lines.extend(f"- {item}" for item in validation.get("schema_errors", []))
+        if not validation.get("schema_errors"):
             lines.append("- None")
         lines.extend(["", "## Cross-reference Checks", ""])
         lines.extend(f"- {item}" for item in validation.get("xref_checks", []))

@@ -4,9 +4,11 @@ import { DocumentAdd, MagicStick } from '@element-plus/icons-vue'
 
 const props = defineProps({
   loading: Boolean,
+  profiles: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['convert'])
 const selectedFiles = ref([])
+const selectedProfile = ref('default')
 
 const fileLabel = computed(() => (
   selectedFiles.value.length
@@ -23,7 +25,7 @@ function handleRemove(uploadFile, uploadFiles) {
 }
 
 function convert() {
-  if (selectedFiles.value.length) emit('convert', selectedFiles.value)
+  if (selectedFiles.value.length) emit('convert', selectedFiles.value, selectedProfile.value)
 }
 </script>
 
@@ -53,6 +55,14 @@ function convert() {
 
     <div class="action-row">
       <div class="file-label"><span></span>{{ fileLabel }}</div>
+      <el-select v-model="selectedProfile" class="profile-select" placeholder="选择期刊 Profile">
+        <el-option
+          v-for="profile in profiles"
+          :key="profile.id"
+          :label="`${profile.label} · ${profile.lang || '-'}`"
+          :value="profile.id"
+        />
+      </el-select>
       <el-button
         type="primary"
         size="large"
@@ -82,6 +92,7 @@ p { margin: 0; max-width: 460px; color: #65706c; line-height: 1.8; font-size: 14
 .action-row { grid-column: 2 / 4; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e6e1d5; padding-top: 20px; }
 .file-label { display: flex; align-items: center; gap: 9px; color: #6b746f; font-size: 13px; }
 .file-label span { width: 7px; height: 7px; border-radius: 50%; background: #e3a72f; }
+.profile-select { width: 250px; margin-left: auto; margin-right: 16px; }
 .el-button { border-radius: 2px; font-weight: 700; letter-spacing: .04em; }
 @media (max-width: 850px) {
   .upload-panel { grid-template-columns: 46px 1fr; }

@@ -1,9 +1,13 @@
 from typing import Any
 
 from lxml import etree
+from app.services.jats_schema_validator import JatsSchemaValidator
 
 
 class ArticleValidator:
+    def __init__(self, schema_validator: JatsSchemaValidator | None = None):
+        self.schema_validator = schema_validator or JatsSchemaValidator()
+
     def validate(self, article: dict[str, Any], xml: str) -> dict[str, Any]:
         errors: list[str] = []
         warnings: list[str] = []
@@ -11,11 +15,24 @@ class ArticleValidator:
         self._validate_required_content(article, errors)
         self._validate_quality(article, warnings)
         self._validate_xml(xml, errors, warnings, xref_checks)
-        return {
+        schema = self.schema_validator.validate(xml)
+        business_rules = {
             "passed": not errors,
+            "errors": list(errors),
+            "warnings": list(warnings),
+        }
+        return {
+            # Keep the legacy aggregate status stable across environments.
+            # Formal JATS conformance is reported separately by jats_schema_valid.
+            "passed": not errors and schema["xml_well_formed"],
             "errors": errors,
             "warnings": warnings,
+            "schema_errors": schema["schema_errors"],
             "xref_checks": xref_checks,
+            "xml_well_formed": schema["xml_well_formed"],
+            "jats_schema_valid": schema["jats_schema_valid"],
+            "schema_file": schema["schema_file"],
+            "business_rules": business_rules,
         }
 
     @staticmethod
