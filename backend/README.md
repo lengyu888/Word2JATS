@@ -1,13 +1,22 @@
 # Word2JATS Backend
 
+## 功能状态
+
+| 能力 | 当前状态 |
+| --- | --- |
+| 本地 RNG/XSD/DTD 正式校验 | 已支持 |
+| 官方 JATS Publishing 1.4 MathML3 DTD | 已内置 |
+| 参考文献细粒度字段解析 | 已支持，复杂引文需人工复核 |
+| Schema 白名单自动修复 | 已支持 |
+| 图片公式 OCR、完整复杂 OMML | 尚未支持 |
+
 ## Profile 与正式 JATS Schema
 
 `POST /api/convert` 和 `POST /api/batch-convert` 接受 multipart 字段 `profile`，可用值由 `GET /api/profiles` 返回。配置文件位于 `backend/profiles/*.yaml`，可定义期刊元数据、标题样式、摘要/关键词标记、图表题正则、参考文献风格和默认许可。
 
 正式校验支持本地 RNG、XSD 或 DTD。仓库已在 `backend/schemas/` 内置官方 JATS Publishing 1.4 MathML3 DTD 完整发行包并自动发现主 DTD；如需切换其他本地 Schema，可设置 `JATS_SCHEMA_PATH` 指向主文件。未配置可用 Schema 时返回 `jats_schema_valid: null`，不会宣称正式合规。
 
-为保持旧接口兼容，顶层 `passed` 表示 XML 合法且业务规则通过；正式 JATS
-合规性必须单独查看 `jats_schema_valid` 与 `schema_errors`。
+为保持旧接口兼容，顶层 `passed` 表示 XML 合法且业务规则通过；正式 JATS 合规性必须单独查看 `jats_schema_valid` 与 `schema_errors`。
 
 校验响应保持原有 `passed/errors/warnings/xref_checks`，并新增：
 
@@ -28,9 +37,7 @@
 }
 ```
 
-`JatsAutoFixer` 根据首次 Schema 错误执行最多两轮白名单修复。目前支持将
-`graphic/@href` 转换为 `xlink:href`、重新排列已知 `journal-meta` 子节点以及
-修复重复 XML ID。修复器不会补写 ISSN、DOI、ORCID 等无法可靠推断的真实数据。
+`JatsAutoFixer` 根据首次 Schema 错误执行最多两轮白名单修复。目前支持将 `graphic/@href` 转换为 `xlink:href`、重新排列已知 `journal-meta` 子节点以及修复重复 XML ID。修复器不会补写 ISSN、DOI、ORCID 等无法可靠推断的真实数据。
 
 参考文献解析器支持 GB/T 7714 与常见英文期刊启发式拆分。解析字段不完整时允许为空，并通过 `parse_confidence` 提示人工复核；生成器在结构化字段可用时输出 `element-citation`，否则回退 `mixed-citation`。
 
@@ -129,10 +136,7 @@ python -m pytest -q
 
 测试覆盖核心解析规则、XML 生成、校验器、健康检查、转换接口、人工校正生成接口和错误文件类型。
 
-`pytest.ini` 只收集 `tests/`，跳过 `backend/temp/`，将测试临时文件固定到
-项目根目录下按当前 Windows 用户隔离的 `.pytest-tmp-<用户名>/`，并禁用非必要
-的 pytest 缓存插件。这可避免不同账户共用系统临时目录、转换目录或旧缓存目录
-时因 ACL 权限导致 `WinError 5`。
+`pytest.ini` 只收集 `tests/`，跳过 `backend/temp/`，将测试临时文件固定到项目根目录下按当前 Windows 用户隔离的 `.pytest-tmp-<用户名>/`，并禁用非必要的 pytest 缓存插件。这可避免不同账户共用系统临时目录、转换目录或旧缓存目录时因 ACL 权限导致 `WinError 5`。
 
 ## 批量评测
 
@@ -163,8 +167,8 @@ python evaluate.py
 
 - 标题、作者和单位使用启发式评分/关键词识别，复杂稿件可能需要更精细的样式映射。
 - 暂不支持矩阵、多行公式、复杂重音符号等全部 OMML 结构；图片公式尚无 OCR，当前版本不调用商业 API。
-- 参考文献支持启发式拆分作者、文章题名、来源、年份、卷期页码、DOI 与出版类型，并在可用时生成 `element-citation`；复杂或非标准引文的字段准确率仍需人工复核。
-- 当前已同时执行原型级业务/节点检查和正式 JATS Publishing 1.4 DTD 校验；生成结果可能因缺少 ISSN、完整贡献者信息或特定期刊必填元数据而未通过正式 DTD。
+- 复杂或非标准参考文献的细粒度字段准确率仍需人工复核。
+- 缺少 ISSN、完整贡献者信息或特定期刊必填元数据时，正式 DTD 校验仍会失败。
 - 复杂合并单元格、跨页表格、嵌套列表和期刊专属必填字段仍需增强。
 - 当前批量转换为请求内顺序处理；生产环境可扩展任务队列、并发限制、进度查询、鉴权和临时结果定期清理。
 - 当前质量评分为确定性的业务启发式评分，仍需结合出版社规则和人工终审。
