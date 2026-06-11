@@ -16,6 +16,7 @@ const form = reactive({
   lang: 'zh',
   journalTitle: '',
   journalId: '',
+  issn: '',
   publisherName: '',
   subject: '',
   pubYear: '',
@@ -45,6 +46,7 @@ watch(
     form.lang = article.lang || 'zh'
     form.journalTitle = article.journal_title || ''
     form.journalId = article.journal_id || ''
+    form.issn = article.issn || ''
     form.publisherName = article.publisher_name || ''
     form.subject = article.subject || ''
     form.pubYear = article.pub_year || ''
@@ -83,6 +85,7 @@ function regenerate() {
       lang: form.lang.trim() || 'zh',
       journal_title: form.journalTitle.trim(),
       journal_id: form.journalId.trim(),
+      issn: form.issn.trim(),
       publisher_name: form.publisherName.trim(),
       subject: form.subject.trim(),
       pub_year: form.pubYear.trim(),
@@ -150,6 +153,9 @@ function regenerate() {
         </el-form-item>
         <el-form-item label="期刊 ID">
           <el-input v-model="form.journalId" />
+        </el-form-item>
+        <el-form-item label="ISSN">
+          <el-input v-model="form.issn" placeholder="1234-5678" />
         </el-form-item>
         <el-form-item label="出版者">
           <el-input v-model="form.publisherName" />

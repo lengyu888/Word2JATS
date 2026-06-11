@@ -27,6 +27,7 @@ GOLDEN_DIR = BACKEND_DIR / "evaluation" / "goldens"
 REPORT_PATH = PROJECT_DIR / "docs" / "评测报告.md"
 ABLATION_REPORT_PATH = PROJECT_DIR / "docs" / "消融实验报告.md"
 ERROR_REPORT_PATH = PROJECT_DIR / "docs" / "错误案例分析.md"
+MANIFEST_PATH = BACKEND_DIR / "evaluation" / "manifest.json"
 
 
 def generate_and_validate(article: dict) -> tuple[str, dict]:
@@ -46,6 +47,10 @@ METRIC_NAMES = (
     "formula_count_accuracy",
     "reference_count_accuracy",
     "xml_valid_rate",
+    "jats_schema_valid_rate",
+    "manual_correction_schema_valid_rate",
+    "schema_errors_before",
+    "schema_errors_after",
     "average_time_seconds",
 )
 
@@ -72,7 +77,12 @@ def compare_articles(
     predicted: dict[str, Any],
     golden: dict[str, Any],
     *,
+    category: str = "未分类",
     xml_valid: bool,
+    schema_valid: bool = False,
+    corrected_schema_valid: bool = False,
+    schema_errors_before: int = 0,
+    schema_errors_after: int = 0,
     elapsed: float,
 ) -> dict[str, Any]:
     predicted_keywords = {normalize_text(item) for item in predicted.get("keywords", [])}
@@ -85,6 +95,7 @@ def compare_articles(
 
     result = {
         "sample": sample,
+        "category": category,
         "title_accuracy": float(
             normalize_text(predicted.get("title")) == normalize_text(golden.get("title"))
         ),
@@ -104,12 +115,16 @@ def compare_articles(
             len(predicted.get("references", [])) == len(golden.get("references", []))
         ),
         "xml_valid_rate": float(xml_valid),
+        "jats_schema_valid_rate": float(schema_valid),
+        "manual_correction_schema_valid_rate": float(corrected_schema_valid),
+        "schema_errors_before": float(schema_errors_before),
+        "schema_errors_after": float(schema_errors_after),
         "average_time_seconds": elapsed,
     }
     result["failed_items"] = [
         name.removesuffix("_accuracy").removesuffix("_rate")
         for name in METRIC_NAMES
-        if name != "average_time_seconds" and result[name] < 1.0
+        if (name.endswith("_accuracy") or name.endswith("_rate")) and result[name] < 1.0
     ]
     return result
 
@@ -132,29 +147,48 @@ def is_valid_xml(xml: str) -> bool:
 
 
 def evaluate_dataset(
-    sample_dir: Path = SAMPLE_DIR, golden_dir: Path = GOLDEN_DIR
+    sample_dir: Path = SAMPLE_DIR, golden_dir: Path = GOLDEN_DIR,
+    manifest_path: Path = MANIFEST_PATH,
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
     results = []
-    for golden_path in sorted(golden_dir.glob("*.json")):
-        sample_path = sample_dir / f"{golden_path.stem}.docx"
+    entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for entry in entries:
+        golden_path = golden_dir / entry["golden"]
+        sample_path = sample_dir / entry["sample"]
         if not sample_path.exists():
             raise FileNotFoundError(f"Golden 对应的 Word 样本不存在：{sample_path}")
         golden = json.loads(golden_path.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory(prefix="word2jats-evaluate-") as temp_dir:
             started = time.perf_counter()
             predicted = DocxParser(sample_path, Path(temp_dir) / "media").parse()
-            xml, _ = generate_and_validate(predicted)
+            xml, validation = generate_and_validate(predicted)
             elapsed = time.perf_counter() - started
+        _, corrected_validation = generate_and_validate(golden["corrected_article"])
+        auto_fix = validation.get("auto_fix", {})
         results.append(
             compare_articles(
                 sample_path.name,
                 predicted,
                 golden,
+                category=entry["category"],
                 xml_valid=is_valid_xml(xml),
+                schema_valid=validation["jats_schema_valid"] is True,
+                corrected_schema_valid=corrected_validation["jats_schema_valid"] is True,
+                schema_errors_before=auto_fix.get("before_schema_error_count", 0),
+                schema_errors_after=auto_fix.get("after_schema_error_count", 0),
                 elapsed=elapsed,
             )
         )
     return results, aggregate_results(results)
+
+
+def category_summary(results: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    categories = {}
+    for category in sorted({item.get("category", "未分类") for item in results}):
+        categories[category] = aggregate_results(
+            [item for item in results if item.get("category", "未分类") == category]
+        )
+    return categories
 
 
 FINAL_METRIC_NAMES = (
@@ -199,7 +233,7 @@ def evaluate_ablation(
     results, _ = evaluate_dataset(sample_dir, golden_dir)
     full_metrics = []
     for result in results:
-        sample = sample_dir / result["sample"]
+        sample = sample_dir / "evaluation" / result["sample"]
         golden = json.loads((golden_dir / f"{sample.stem}.json").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory(prefix="word2jats-ablation-") as temp_dir:
             article = DocxParser(sample, Path(temp_dir) / "media").parse()
@@ -263,12 +297,21 @@ def render_error_analysis(results: list[dict[str, Any]]) -> str:
         "本报告根据本地 golden 评测结果自动列出未满分指标，便于答辩时说明真实边界。", "",
         "## 典型失败样例", "",
     ]
-    failures = [item for item in results if item.get("failed_items")]
+    failures = [
+        item for item in results
+        if [name for name in item.get("failed_items", []) if name != "jats_schema_valid"]
+    ]
     if not failures:
         lines.append("- 当前小样本集合未发现失败项，需要继续加入复杂合并单元格、嵌套列表和图片公式样本。")
     for item in failures:
-        lines.append(f"- **{item['sample']}**：未满分指标为 `{', '.join(item['failed_items'])}`。")
+        parse_failures = [name for name in item["failed_items"] if name != "jats_schema_valid"]
+        lines.append(f"- **{item['sample']}**：未满分解析指标为 `{', '.join(parse_failures)}`。")
     lines.extend([
+        "", "## 系统性出版元数据缺口", "",
+        f"- 原始转换正式 Schema 通过率为 `{(sum(item['jats_schema_valid_rate'] for item in results) / len(results) if results else 0):.1%}`；"
+        "合成 Word 原稿不内置 ISSN 等期刊级元数据，系统不会自动编造。",
+        f"- 使用 golden 模拟人工补充出版元数据后，正式 Schema 通过率为 "
+        f"`{(sum(item['manual_correction_schema_valid_rate'] for item in results) / len(results) if results else 0):.1%}`。",
         "", "## 后续优化方向", "",
         "- 增加跨页表格、复杂合并单元格和嵌套列表样本。",
         "- 扩展矩阵、多行公式、重音符号等 OMML 结构。",
@@ -280,7 +323,10 @@ def render_error_analysis(results: list[dict[str, Any]]) -> str:
 
 
 def _quality_score(result: dict[str, Any]) -> float:
-    quality_metrics = [name for name in METRIC_NAMES if name != "average_time_seconds"]
+    quality_metrics = [
+        name for name in METRIC_NAMES
+        if name.endswith("_accuracy") or name.endswith("_rate")
+    ]
     return sum(float(result[name]) for name in quality_metrics) / len(quality_metrics)
 
 
@@ -288,16 +334,22 @@ def render_report(results: list[dict[str, Any]], metrics: dict[str, float]) -> s
     metric_rows = []
     for name in METRIC_NAMES:
         value = metrics[name]
-        formatted = f"{value:.4f} 秒" if name == "average_time_seconds" else f"{value:.2%}"
+        if name == "average_time_seconds":
+            formatted = f"{value:.4f} 秒"
+        elif name.startswith("schema_errors_"):
+            formatted = f"{value:.2f} 条/篇"
+        else:
+            formatted = f"{value:.2%}"
         metric_rows.append(f"| `{name}` | {formatted} |")
 
     sample_rows = []
     for result in results:
         sample_rows.append(
-            "| {sample} | {title:.0%} | {abstract:.0%} | {keywords:.0%}/{recall:.0%} | "
+            "| {sample} | {category} | {title:.0%} | {abstract:.0%} | {keywords:.0%}/{recall:.0%} | "
             "{sections:.0%} | {figures:.0%} | {formulas:.0%} | {references:.0%} | "
-            "{xml:.0%} | {elapsed:.4f} |".format(
+            "{xml:.0%} | {schema:.0%} | {corrected:.0%} | {before:.0f}→{after:.0f} | {elapsed:.4f} |".format(
                 sample=result["sample"],
+                category=result["category"],
                 title=result["title_accuracy"],
                 abstract=result["abstract_accuracy"],
                 keywords=result["keyword_precision"],
@@ -307,8 +359,19 @@ def render_report(results: list[dict[str, Any]], metrics: dict[str, float]) -> s
                 formulas=result["formula_count_accuracy"],
                 references=result["reference_count_accuracy"],
                 xml=result["xml_valid_rate"],
+                schema=result["jats_schema_valid_rate"],
+                corrected=result["manual_correction_schema_valid_rate"],
+                before=result["schema_errors_before"],
+                after=result["schema_errors_after"],
                 elapsed=result["average_time_seconds"],
             )
+        )
+    category_rows = []
+    for category, values in category_summary(results).items():
+        category_rows.append(
+            f"| {category} | {len([item for item in results if item['category'] == category])} | "
+            f"{values['xml_valid_rate']:.1%} | {values['jats_schema_valid_rate']:.1%} | "
+            f"{values['manual_correction_schema_valid_rate']:.1%} | {values['average_time_seconds']:.4f} |"
         )
 
     ranked = sorted(results, key=_quality_score, reverse=True)
@@ -331,7 +394,19 @@ def render_report(results: list[dict[str, Any]], metrics: dict[str, float]) -> s
             "本报告由 `backend/evaluate.py` 基于本地测试 Word 与人工标注 golden JSON 自动生成，"
             "不依赖外部 API。",
             "",
+            "数据集为六类均衡的分层合成评测集，用于可复现工程评测，不冒充真实出版社稿件。"
+            "“人工校正后正式 Schema 通过率”使用 golden 中的完整出版元数据模拟人工校正后重新生成并校验。",
+            "",
             f"测试样本数量：**{len(results)}**",
+            "",
+            "## 关键结果",
+            "",
+            f"- 测试样本数量：**{len(results)} 篇**",
+            f"- XML 合法率：**{metrics['xml_valid_rate']:.2%}**",
+            f"- 原始转换 JATS Schema 通过率：**{metrics['jats_schema_valid_rate']:.2%}**",
+            f"- 人工校正后正式 JATS Schema 通过率：**{metrics['manual_correction_schema_valid_rate']:.2%}**",
+            f"- 平均转换耗时：**{metrics['average_time_seconds']:.4f} 秒/篇**",
+            f"- Schema 错误数：**{metrics['schema_errors_before']:.2f} → {metrics['schema_errors_after']:.2f} 条/篇**",
             "",
             "## 汇总指标",
             "",
@@ -339,10 +414,16 @@ def render_report(results: list[dict[str, Any]], metrics: dict[str, float]) -> s
             "| --- | ---: |",
             *metric_rows,
             "",
+            "## 分类指标",
+            "",
+            "| 类别 | 样本数 | XML 合法率 | JATS Schema 通过率 | 人工校正后正式 Schema 通过率 | 平均耗时(秒) |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+            *category_rows,
+            "",
             "## 逐样本结果",
             "",
-            "| 样本 | 标题 | 摘要 | 关键词 P/R | 章节标题 | 图片数 | 公式数 | 参考文献数 | XML 合法 | 耗时(秒) |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| 样本 | 类别 | 标题 | 摘要 | 关键词 P/R | 章节标题 | 图片数 | 公式数 | 参考文献数 | XML 合法 | Schema | 人工校正后 Schema | Schema 错误 | 耗时(秒) |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
             *sample_rows,
             "",
             "## 典型成功案例",

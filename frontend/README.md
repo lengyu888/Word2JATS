@@ -75,7 +75,7 @@ npm run build
 - 结构化 JSON 展示 tables，人工校正页可编辑表题、二维 rows 和 section_index，并重新生成 `table-wrap`
 - 结构化 JSON 展示 formulas 的 `content/omml/mathml/latex/type`，人工校正页可编辑后重新生成 `disp-formula/alternatives`
 - 结构化 JSON 展示 `id/label/raw` references，人工校正页可编辑后重新生成 `ref-list`
-- 人工校正页支持 DOI、文章类型、语言、期刊、出版者、学科和出版日期等 JATS Publishing 元数据
+- 人工校正页支持 DOI、ISSN、文章类型、语言、期刊、出版者、学科和出版日期等 JATS Publishing 元数据
 - 作者可在 authors JSON 中使用 `affiliation_ids` 编辑与 `aff1`、`aff2` 等单位的关联
 - 首页展示五类核心能力卡片，并支持一键加载内置演示稿
 - 质量报告展示总分、等级、七项分项得分、问题位置与修复建议

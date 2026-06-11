@@ -102,6 +102,7 @@ class Article(BaseModel):
     lang: str = "zh"
     journal_title: str = ""
     journal_id: str = ""
+    issn: str = ""
     publisher_name: str = ""
     subject: str = ""
     pub_year: str = ""

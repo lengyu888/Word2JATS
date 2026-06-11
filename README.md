@@ -80,14 +80,21 @@ python scripts/generate_sample_docx.py
 
 ## 本地评测
 
-项目在 `backend/evaluation/goldens` 保存与测试 Word 同名的人工标注 JSON。运行以下命令可批量解析样本、计算准确率和耗时，并更新 `docs/评测报告.md`、`docs/消融实验报告.md` 与 `docs/错误案例分析.md`：
+项目包含六类各 5 篇、共 30 篇的分层合成评测集。它用于可复现工程评测，不冒充真实出版社稿件。重新生成语料与 golden：
+
+```bash
+cd backend
+python scripts/generate_evaluation_corpus.py
+```
+
+运行评测并更新 `docs/评测报告.md`、`docs/消融实验报告.md` 与 `docs/错误案例分析.md`：
 
 ```bash
 cd backend
 python evaluate.py
 ```
 
-评测指标覆盖元数据、章节、图表绑定、公式、参考文献、交叉引用、XML 合法率、JATS Schema 合规率和平均处理耗时。整个评测流程仅使用本地文件，不依赖外部 API。
+评测指标覆盖元数据、章节、图表绑定、公式、参考文献、交叉引用、XML 合法率、原始转换 JATS Schema 通过率、人工校正后正式 JATS Schema 通过率、自动修复前后错误数和平均处理耗时。整个评测流程仅使用本地文件，不依赖外部 API。
 
 ## 当前支持
 

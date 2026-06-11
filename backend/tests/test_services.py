@@ -242,6 +242,20 @@ def test_generator_builds_jats_publishing_metadata_and_affiliation_links():
     assert "<year>2026</year>" in xml
 
 
+def test_generator_emits_issn_for_formal_schema_delivery():
+    article = {
+        "title": "ISSN test", "abstract": "Abstract", "keywords": ["a", "b", "c"],
+        "sections": [{"title": "Intro", "paragraphs": ["Text"]}],
+        "authors": [{"name": "Alice Smith", "orcid": "0000-0000-0000-0001"}],
+        "affiliations": ["Publishing Lab"], "figures": [], "tables": [],
+        "lists": [], "formulas": [], "references": [], "issn": "1234-5678",
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert '<issn publication-format="electronic">1234-5678</issn>' in xml
+
+
 def test_parser_recognizes_formula_symbols_keywords_and_equation_style(tmp_path):
     path = tmp_path / "formulas.docx"
     document = Document()

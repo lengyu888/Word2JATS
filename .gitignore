@@ -18,3 +18,4 @@ backend/temp/
 .vscode/
 .DS_Store
 Thumbs.db
+~$*.docx

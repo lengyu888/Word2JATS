@@ -119,6 +119,10 @@ class JatsGenerator:
         journal_id.text = article.get("journal_id", "")
         title_group = etree.SubElement(meta, "journal-title-group")
         etree.SubElement(title_group, "journal-title").text = article.get("journal_title", "")
+        if article.get("issn"):
+            etree.SubElement(
+                meta, "issn", attrib={"publication-format": "electronic"}
+            ).text = article["issn"]
         publisher = etree.SubElement(meta, "publisher")
         etree.SubElement(publisher, "publisher-name").text = article.get("publisher_name", "")
 
@@ -134,14 +138,14 @@ class JatsGenerator:
         contrib_group = etree.SubElement(meta, "contrib-group")
         for author in article["authors"]:
             contrib = etree.SubElement(contrib_group, "contrib", attrib={"contrib-type": "author"})
-            name = etree.SubElement(contrib, "name")
-            surname, given_names = self._split_name(author["name"])
-            etree.SubElement(name, "surname").text = surname
-            etree.SubElement(name, "given-names").text = given_names
             if author.get("orcid"):
                 etree.SubElement(
                     contrib, "contrib-id", attrib={"contrib-id-type": "orcid"}
                 ).text = author["orcid"]
+            name = etree.SubElement(contrib, "name")
+            surname, given_names = self._split_name(author["name"])
+            etree.SubElement(name, "surname").text = surname
+            etree.SubElement(name, "given-names").text = given_names
             affiliation_ids = author.get("affiliation_ids") or [
                 f"aff{index}" for index in range(1, len(article["affiliations"]) + 1)
             ]

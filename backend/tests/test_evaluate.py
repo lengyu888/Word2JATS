@@ -1,6 +1,6 @@
 from evaluate import (
     aggregate_results, compare_articles, evaluate_ablation, evaluate_dataset,
-    render_ablation_report, render_error_analysis, render_report,
+    render_ablation_report, render_error_analysis, render_report, category_summary,
 )
 
 
@@ -24,7 +24,11 @@ def test_compare_articles_calculates_required_metrics():
         "references": [{}, {}],
     }
 
-    result = compare_articles("sample.docx", predicted, golden, xml_valid=True, elapsed=0.25)
+    result = compare_articles(
+        "sample.docx", predicted, golden, category="异常排版论文",
+        xml_valid=True, schema_valid=False, corrected_schema_valid=True,
+        schema_errors_before=5, schema_errors_after=2, elapsed=0.25,
+    )
 
     assert result["title_accuracy"] == 1.0
     assert result["abstract_accuracy"] == 0.0
@@ -35,6 +39,10 @@ def test_compare_articles_calculates_required_metrics():
     assert result["formula_count_accuracy"] == 0.0
     assert result["reference_count_accuracy"] == 1.0
     assert result["xml_valid_rate"] == 1.0
+    assert result["jats_schema_valid_rate"] == 0.0
+    assert result["manual_correction_schema_valid_rate"] == 1.0
+    assert result["schema_errors_before"] == 5
+    assert result["schema_errors_after"] == 2
     assert result["average_time_seconds"] == 0.25
     assert "abstract" in result["failed_items"]
 
@@ -51,6 +59,10 @@ def test_aggregate_results_averages_each_metric():
         "formula_count_accuracy": 0.0,
         "reference_count_accuracy": 1.0,
         "xml_valid_rate": 1.0,
+        "jats_schema_valid_rate": 0.0,
+        "manual_correction_schema_valid_rate": 1.0,
+        "schema_errors_before": 5,
+        "schema_errors_after": 2,
         "average_time_seconds": 0.2,
         "failed_items": ["abstract"],
     }
@@ -61,6 +73,7 @@ def test_aggregate_results_averages_each_metric():
     assert metrics["title_accuracy"] == 0.5
     assert metrics["keyword_precision"] == 0.5
     assert metrics["average_time_seconds"] == 0.3
+    assert metrics["manual_correction_schema_valid_rate"] == 1.0
 
 
 def test_render_report_contains_metrics_and_cases():
@@ -75,6 +88,11 @@ def test_render_report_contains_metrics_and_cases():
         "formula_count_accuracy": 1.0,
         "reference_count_accuracy": 1.0,
         "xml_valid_rate": 1.0,
+        "jats_schema_valid_rate": 0.0,
+        "manual_correction_schema_valid_rate": 1.0,
+        "schema_errors_before": 5,
+        "schema_errors_after": 2,
+        "category": "异常排版论文",
         "average_time_seconds": 0.1,
         "failed_items": ["abstract"],
     }
@@ -84,22 +102,29 @@ def test_render_report_contains_metrics_and_cases():
     assert "# Word2JATS 评测报告" in report
     assert "测试样本数量：**1**" in report
     assert "title_accuracy" in report
+    assert "jats_schema_valid_rate" in report
+    assert "manual_correction_schema_valid_rate" in report
+    assert "分类指标" in report
     assert "典型成功案例" in report
     assert "典型失败案例" in report
     assert "后续优化方向" in report
 
 
-def test_evaluate_dataset_runs_all_committed_goldens():
+def test_evaluate_dataset_runs_stratified_30_sample_corpus():
     results, metrics = evaluate_dataset()
 
-    assert len(results) == 4
-    assert {item["sample"] for item in results} == {
-        "word2jats_demo.docx",
-        "word2jats_feature_acceptance.docx",
-        "word2jats_image_edge_cases.docx",
-        "word2jats_omml_formulas.docx",
+    assert len(results) == 30
+    assert set(category_summary(results)) == {
+        "中文普通论文", "英文普通论文", "图表密集论文",
+        "公式密集论文", "参考文献复杂论文", "异常排版论文",
     }
+    assert all(
+        len([item for item in results if item["category"] == category]) == 5
+        for category in category_summary(results)
+    )
     assert metrics["xml_valid_rate"] == 1.0
+    assert "jats_schema_valid_rate" in metrics
+    assert "manual_correction_schema_valid_rate" in metrics
 
 
 def test_ablation_and_error_reports_cover_final_metrics():

@@ -1,0 +1,102 @@
+{
+  "category": "中文普通论文",
+  "title": "结构化出版评测研究 3",
+  "abstract": "本文用于评估第 3 种可复现 JATS 结构化转换场景。",
+  "keywords": [
+    "JATS",
+    "Word",
+    "场景3"
+  ],
+  "sections": [
+    {
+      "title": "引言",
+      "paragraphs": [
+        "正文"
+      ]
+    },
+    {
+      "title": "方法",
+      "paragraphs": [
+        "正文"
+      ]
+    },
+    {
+      "title": "结论",
+      "paragraphs": [
+        "正文"
+      ]
+    }
+  ],
+  "figures": [],
+  "tables": [],
+  "formulas": [],
+  "references": [
+    {}
+  ],
+  "corrected_article": {
+    "title": "结构化出版评测研究 3",
+    "doi": "10.9999/word2jats.eval.03",
+    "article_type": "research-article",
+    "lang": "zh",
+    "journal_title": "Word2JATS Evaluation Journal",
+    "journal_id": "W2J-EVAL",
+    "issn": "2099-9999",
+    "publisher_name": "Word2JATS Publishing Lab",
+    "subject": "Structured publishing",
+    "pub_year": "2026",
+    "pub_month": "06",
+    "pub_day": "11",
+    "authors": [
+      {
+        "name": "张三",
+        "orcid": "0000-0002-0000-0003",
+        "affiliation_ids": [
+          "aff1"
+        ]
+      }
+    ],
+    "affiliations": [
+      "Word2JATS Publishing Lab"
+    ],
+    "abstract": "本文用于评估第 3 种可复现 JATS 结构化转换场景。",
+    "keywords": [
+      "JATS",
+      "Word",
+      "场景3"
+    ],
+    "sections": [
+      {
+        "title": "引言",
+        "level": 1,
+        "paragraphs": [
+          "正文"
+        ]
+      },
+      {
+        "title": "方法",
+        "level": 1,
+        "paragraphs": [
+          "正文"
+        ]
+      },
+      {
+        "title": "结论",
+        "level": 1,
+        "paragraphs": [
+          "正文"
+        ]
+      }
+    ],
+    "figures": [],
+    "tables": [],
+    "lists": [],
+    "formulas": [],
+    "references": [
+      {
+        "id": "ref1",
+        "label": "[1]",
+        "raw": "Evaluation reference 1. 2026."
+      }
+    ]
+  }
+}

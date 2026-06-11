@@ -140,14 +140,21 @@ python -m pytest -q
 
 ## 批量评测
 
-`evaluation/goldens` 中的人工标注 JSON 与 `sample_documents` 下的 Word 文件按文件名对应。Golden 只需标注评测使用的 `title`、`abstract`、`keywords`、`sections`、`figures`、`formulas` 和 `references` 字段。
+分层合成评测集包含中文普通论文、英文普通论文、图表密集论文、公式密集论文、参考文献复杂论文和异常排版论文六类，每类 5 篇。重新生成 30 篇 Word、golden 和 manifest：
+
+```bash
+cd backend
+python scripts/generate_evaluation_corpus.py
+```
+
+Golden 同时保存解析目标和 `corrected_article`。后者用于模拟人工补充 ISSN、ORCID 等真实出版元数据，并统计人工校正后正式 JATS Schema 通过率。
 
 ```bash
 cd backend
 python evaluate.py
 ```
 
-脚本会运行 `DocxParser`、生成并解析 JATS XML，计算各项准确率与平均处理时间，并写入 `docs/评测报告.md`、`docs/消融实验报告.md` 与 `docs/错误案例分析.md`。评测不启动 Web 服务，也不调用外部 API。
+脚本会运行 `DocxParser`、Schema 自动修复与正式 DTD 校验，计算解析准确率、XML 合法率、原始/人工校正后 Schema 通过率、自动修复错误降幅与平均处理时间，并写入三份 Markdown 报告。评测不启动 Web 服务，也不调用外部 API。
 
 ## 校验规则
 
