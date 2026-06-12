@@ -54,6 +54,7 @@ class DocxParser:
 
     def parse(self) -> dict[str, Any]:
         flow = DocumentFlowParser(self.docx_path).parse()
+        self.document_flow_nodes = flow
         paragraphs = [node for node in flow if node.get("text", "").strip()]
         article = self._empty_article()
         skipped: set[int] = set()
@@ -224,6 +225,13 @@ class DocxParser:
                     "omml": node.get("omml", ""),
                     "mathml": node.get("mathml", ""),
                     "latex": node.get("latex", ""),
+                    "conversion_status": node.get(
+                        "conversion_status",
+                        "failed" if node.get("formula_type") == "omml" else "success",
+                    ),
+                    "supported_features": node.get("supported_features", []),
+                    "unsupported_features": node.get("unsupported_features", []),
+                    "issues": node.get("issues", []),
                     "section_index": current_section_index,
                 })
                 continue
@@ -238,6 +246,7 @@ class DocxParser:
             "title": "", "authors": [], "affiliations": [], "abstract": "",
             "keywords": [], "sections": [], "figures": [], "tables": [], "lists": [],
             "formulas": [], "references": [],
+            "document_flow_view": [],
         }
 
     def _find_title_index(self, paragraphs: list[dict[str, Any]]) -> int:

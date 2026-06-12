@@ -4,6 +4,7 @@ import zlib
 
 from docx import Document
 from docx.shared import Inches
+from lxml import etree
 
 from app.services.docx_parser import DocxParser
 from app.services.jats_generator import JatsGenerator
@@ -90,6 +91,10 @@ def test_parser_extracts_core_article_structure(tmp_path):
         "mathml": "",
         "latex": "",
         "type": "plain_text",
+        "conversion_status": "success",
+        "supported_features": [],
+        "unsupported_features": [],
+        "issues": [],
         "section_index": 0,
     }
     assert article["references"][0]["id"] == "ref1"
@@ -254,6 +259,20 @@ def test_generator_emits_issn_for_formal_schema_delivery():
     xml = JatsGenerator().generate(article)
 
     assert '<issn publication-format="electronic">1234-5678</issn>' in xml
+
+
+def test_generator_assigns_stable_section_ids_for_flow_mapping():
+    article = {
+        "title": "Section ID test", "abstract": "Abstract", "keywords": ["a", "b", "c"],
+        "sections": [{"title": "Intro", "paragraphs": ["Text"]}],
+        "authors": [], "affiliations": [], "figures": [], "tables": [],
+        "lists": [], "formulas": [], "references": [],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    root = etree.fromstring(xml.encode("utf-8"))
+    assert root.find("./body/sec").get("id") == "sec1"
 
 
 def test_parser_recognizes_formula_symbols_keywords_and_equation_style(tmp_path):

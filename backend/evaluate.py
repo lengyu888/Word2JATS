@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from app.services.docx_parser import DocxParser
 from app.services.jats_auto_fixer import JatsAutoFixer
 from app.services.jats_generator import JatsGenerator
 from app.services.validator import ArticleValidator
+from scripts.generate_evaluation_corpus import generate as generate_evaluation_corpus
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -146,10 +148,26 @@ def is_valid_xml(xml: str) -> bool:
         return False
 
 
+@contextmanager
+def temporary_evaluation_corpus():
+    """Build the 30-document corpus outside sample_documents and remove it afterwards."""
+    with tempfile.TemporaryDirectory(prefix="word2jats-evaluation-") as temp_dir:
+        root = Path(temp_dir)
+        sample_dir = root / "evaluation"
+        golden_dir = root / "goldens"
+        manifest_path = root / "manifest.json"
+        generate_evaluation_corpus(sample_dir, golden_dir, manifest_path)
+        yield root, golden_dir, manifest_path
+
+
 def evaluate_dataset(
-    sample_dir: Path = SAMPLE_DIR, golden_dir: Path = GOLDEN_DIR,
-    manifest_path: Path = MANIFEST_PATH,
+    sample_dir: Path | None = None,
+    golden_dir: Path | None = None,
+    manifest_path: Path | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
+    if sample_dir is None or golden_dir is None or manifest_path is None:
+        with temporary_evaluation_corpus() as generated:
+            return evaluate_dataset(*generated)
     results = []
     entries = json.loads(manifest_path.read_text(encoding="utf-8"))
     for entry in entries:
@@ -228,9 +246,14 @@ def final_metrics(result: dict[str, Any], *, schema_valid: bool = False) -> dict
 
 
 def evaluate_ablation(
-    sample_dir: Path = SAMPLE_DIR, golden_dir: Path = GOLDEN_DIR
+    sample_dir: Path | None = None,
+    golden_dir: Path | None = None,
+    manifest_path: Path | None = None,
 ) -> dict[str, dict[str, float]]:
-    results, _ = evaluate_dataset(sample_dir, golden_dir)
+    if sample_dir is None or golden_dir is None or manifest_path is None:
+        with temporary_evaluation_corpus() as generated:
+            return evaluate_ablation(*generated)
+    results, _ = evaluate_dataset(sample_dir, golden_dir, manifest_path)
     full_metrics = []
     for result in results:
         sample = sample_dir / "evaluation" / result["sample"]
@@ -312,9 +335,14 @@ def render_error_analysis(results: list[dict[str, Any]]) -> str:
         "合成 Word 原稿不内置 ISSN 等期刊级元数据，系统不会自动编造。",
         f"- 使用 golden 模拟人工补充出版元数据后，正式 Schema 通过率为 "
         f"`{(sum(item['manual_correction_schema_valid_rate'] for item in results) / len(results) if results else 0):.1%}`。",
+        "", "## 复杂公式稳定降级案例", "",
+        "- 唯一验收稿 `word2jats_final_acceptance.docx` 包含矩阵、分段函数、带上下限大运算符、"
+        "常见重音和一个故意加入的复杂 OMML 子结构。",
+        "- 可支持公式输出 MathML/LaTeX 并标记 `success`；未知复杂结构保留可识别内容并标记 "
+        "`partial`，不会导致整篇转换或 JATS 生成失败。",
         "", "## 后续优化方向", "",
         "- 增加跨页表格、复杂合并单元格和嵌套列表样本。",
-        "- 扩展矩阵、多行公式、重音符号等 OMML 结构。",
+        "- 继续扩展复杂嵌套矩阵、多重重音和未知 OMML 子结构。",
         "- 为扫描图片公式增加离线 OCR 插件接口。",
         "- 扩充不同期刊参考文献风格的字段级 golden 标注。",
         "- 根据正式 JATS DTD 错误定位持续补齐期刊级必填元数据。", "",

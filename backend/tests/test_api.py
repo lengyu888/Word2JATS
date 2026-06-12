@@ -4,7 +4,7 @@ import json
 import zipfile
 
 from app.main import app
-from tests.test_services import build_sample_docx
+from tests.test_services import build_figure_docx, build_sample_docx, make_png
 
 
 client = TestClient(app)
@@ -61,6 +61,44 @@ def test_convert_endpoint_returns_all_outputs():
     assert isinstance(payload["validation"]["auto_fix"]["applied_fixes"], list)
     assert 0 <= payload["quality_report"]["total_score"] <= 100
     assert "metadata_score" in payload["quality_report"]["scores"]
+    assert payload["article"]["document_flow_view"]
+    assert any(item["jats_tag"] == "article-title" for item in payload["article"]["document_flow_view"])
+    assert len(payload["conversion_id"]) == 32
+    assert isinstance(payload["media_paths"], list)
+
+
+def test_convert_figures_include_secure_media_url(tmp_path):
+    path = tmp_path / "figure.docx"
+    build_figure_docx(path, ["图1 测试图片"], 1)
+
+    response = client.post(
+        "/api/convert",
+        files={"file": (path.name, path.read_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    figure = payload["article"]["figures"][0]
+    assert figure["filename"].endswith(".png")
+    assert figure["media_url"] == f"/api/media/{payload['conversion_id']}/{figure['filename']}"
+    assert payload["media_paths"] == [figure["path"]]
+    media = client.get(figure["media_url"])
+    assert media.status_code == 200
+    assert media.headers["content-type"] == "image/png"
+    assert media.content.startswith(b"\x89PNG")
+
+
+def test_media_endpoint_rejects_invalid_or_missing_paths():
+    from app.routers.convert import TEMP_ROOT
+    conversion_id = "b" * 32
+    media_dir = TEMP_ROOT / conversion_id / "media"
+    media_dir.mkdir(parents=True, exist_ok=True)
+    (media_dir / "valid.png").write_bytes(make_png((20, 80, 120)))
+
+    assert client.get(f"/api/media/{conversion_id}/valid.png").status_code == 200
+    assert client.get(f"/api/media/{conversion_id}/missing.png").status_code == 404
+    assert client.get(f"/api/media/not-a-valid-id/valid.png").status_code in {400, 404}
+    assert client.get(f"/api/media/{conversion_id}/..%2Fsecret.png").status_code in {400, 404}
 
 
 def test_convert_endpoint_rejects_non_docx():
@@ -105,6 +143,7 @@ def test_generate_xml_endpoint_uses_corrected_article():
     assert payload["validation"]["passed"] is True
     assert "remaining_schema_errors" in payload["validation"]["auto_fix"]
     assert payload["quality_report"]["issues"] is not None
+    assert payload["article"]["document_flow_view"]
 
 
 def test_generate_xml_endpoint_normalizes_missing_optional_collections():

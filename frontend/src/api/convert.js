@@ -28,7 +28,7 @@ export async function getProfiles() {
 
 export async function getDemoDocument() {
   const response = await client.get('/demo-document', { responseType: 'blob' })
-  return new File([response.data], 'word2jats_feature_acceptance.docx', {
+  return new File([response.data], 'word2jats_final_acceptance.docx', {
     type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   })
 }

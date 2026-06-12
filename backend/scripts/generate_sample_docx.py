@@ -1,4 +1,6 @@
-"""Generate Word2JATS demonstration manuscripts covering current MVP features."""
+"""Generate the single, comprehensive Word2JATS acceptance document."""
+
+from __future__ import annotations
 
 import struct
 import zlib
@@ -12,9 +14,7 @@ from docx.shared import Inches, Pt
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "sample_documents"
-MAIN_OUTPUT = OUTPUT_DIR / "word2jats_feature_acceptance.docx"
-EDGE_OUTPUT = OUTPUT_DIR / "word2jats_image_edge_cases.docx"
-OMML_OUTPUT = OUTPUT_DIR / "word2jats_omml_formulas.docx"
+FINAL_OUTPUT = OUTPUT_DIR / "word2jats_final_acceptance.docx"
 OMML_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 
 
@@ -40,30 +40,12 @@ def make_png(path: Path, color: tuple[int, int, int], label_band: int) -> None:
             + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
         )
 
-    png = (
+    path.write_bytes(
         b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
         + chunk(b"IDAT", zlib.compress(b"".join(rows)))
         + chunk(b"IEND", b"")
     )
-    path.write_bytes(png)
-
-
-def add_title(document: Document, text: str) -> None:
-    paragraph = document.add_paragraph()
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = paragraph.add_run(text)
-    run.bold = True
-    run.font.size = Pt(18)
-
-
-def add_picture(document: Document, filename: str, color: tuple[int, int, int], band: int) -> None:
-    image_path = OUTPUT_DIR / filename
-    make_png(image_path, color, band)
-    paragraph = document.add_paragraph()
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    paragraph.add_run().add_picture(str(image_path), width=Inches(5.3))
-    image_path.unlink()
 
 
 def configure_document(document: Document) -> None:
@@ -74,165 +56,210 @@ def configure_document(document: Document) -> None:
     section.right_margin = Inches(1)
 
 
-def add_native_formula(document: Document) -> None:
-    omml = f"""
-    <m:oMathPara xmlns:m="{OMML_NS}">
-      <m:oMath>
-        <m:f><m:num><m:r><m:t>a</m:t></m:r></m:num><m:den><m:r><m:t>b</m:t></m:r></m:den></m:f>
-        <m:r><m:t>+</m:t></m:r>
-        <m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup>
-        <m:r><m:t>+</m:t></m:r>
-        <m:rad><m:e><m:r><m:t>z</m:t></m:r></m:e></m:rad>
-        <m:r><m:t>+</m:t></m:r>
+def add_title(document: Document, text: str, *, obvious: bool = True) -> None:
+    paragraph = document.add_paragraph()
+    if obvious:
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = paragraph.add_run(text)
+    run.bold = obvious
+    run.font.size = Pt(18 if obvious else 12)
+
+
+def add_picture(
+    document: Document, filename: str, color: tuple[int, int, int], band: int
+) -> None:
+    image_path = OUTPUT_DIR / filename
+    make_png(image_path, color, band)
+    paragraph = document.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.add_run().add_picture(str(image_path), width=Inches(5.3))
+    image_path.unlink()
+
+
+def run(text: str) -> str:
+    return f"<m:r><m:t>{text}</m:t></m:r>"
+
+
+def add_native_formula(document: Document, content: str) -> None:
+    paragraph = document.add_paragraph()
+    paragraph._p.append(parse_xml(f'<m:oMath xmlns:m="{OMML_NS}">{content}</m:oMath>'))
+
+
+def add_basic_formula(document: Document) -> None:
+    add_native_formula(
+        document,
+        f"""
+        <m:f><m:num>{run("a")}</m:num><m:den>{run("b")}</m:den></m:f>
+        {run("+")}
+        <m:sSup><m:e>{run("x")}</m:e><m:sup>{run("2")}</m:sup></m:sSup>
+        {run("+")}
+        <m:rad><m:e>{run("z")}</m:e></m:rad>
+        """,
+    )
+
+
+def add_matrix_formula(document: Document) -> None:
+    add_native_formula(
+        document,
+        f"""
+        <m:m>
+          <m:mr><m:e>{run("a")}</m:e><m:e>{run("b")}</m:e></m:mr>
+          <m:mr><m:e>{run("c")}</m:e><m:e>{run("d")}</m:e></m:mr>
+        </m:m>
+        """,
+    )
+
+
+def add_cases_formula(document: Document) -> None:
+    add_native_formula(
+        document,
+        f"""
+        <m:d>
+          <m:dPr><m:begChr m:val="{{"/><m:endChr m:val=""/></m:dPr>
+          <m:e><m:eqArr>
+            <m:e>{run("x, x&gt;0")}</m:e>
+            <m:e>{run("-x, x≤0")}</m:e>
+          </m:eqArr></m:e>
+        </m:d>
+        """,
+    )
+
+
+def add_nary_and_accents(document: Document) -> None:
+    add_native_formula(
+        document,
+        f"""
         <m:nary>
           <m:naryPr><m:chr m:val="∑"/></m:naryPr>
-          <m:sub><m:r><m:t>i=1</m:t></m:r></m:sub>
-          <m:sup><m:r><m:t>n</m:t></m:r></m:sup>
-          <m:e><m:r><m:t>x</m:t></m:r></m:e>
+          <m:sub>{run("i=1")}</m:sub><m:sup>{run("n")}</m:sup><m:e>{run("x_i")}</m:e>
         </m:nary>
-      </m:oMath>
-    </m:oMathPara>
-    """.strip()
-    paragraph = document.add_paragraph()
-    paragraph._p.append(parse_xml(omml))
+        {run("+")}
+        <m:nary>
+          <m:naryPr><m:chr m:val="∫"/></m:naryPr>
+          <m:sub>{run("0")}</m:sub><m:sup>{run("1")}</m:sup><m:e>{run("f(x)dx")}</m:e>
+        </m:nary>
+        {run("+")}
+        <m:acc><m:accPr><m:chr m:val="^"/></m:accPr><m:e>{run("x")}</m:e></m:acc>
+        """,
+    )
 
 
-def build_main_document() -> Document:
+def add_partial_formula(document: Document) -> None:
+    add_native_formula(
+        document,
+        f"""
+        <m:acc><m:accPr><m:chr m:val="⃛"/></m:accPr><m:e>{run("q")}</m:e></m:acc>
+        <m:unknownComplex>{run("kept")}</m:unknownComplex>
+        """,
+    )
+
+
+def build_final_document() -> Document:
     document = Document()
     configure_document(document)
-    add_title(document, "Word2JATS：学术期刊 Word 智能结构化转换功能验收稿")
-
+    add_title(document, "Word2JATS：学术期刊智能结构化转换全流程验收稿")
     document.add_paragraph("张三，李四，王五")
     document.add_paragraph("未来出版大学 数字出版学院，智能内容处理实验室")
     document.add_paragraph(
-        "摘要：本文构造一份覆盖 Word2JATS 当前能力的学术期刊测试稿件，"
-        "用于验证从 Word 文档到结构化 JSON 和 JATS XML 的完整转换流程。"
+        "摘要：本文构造一篇覆盖 Word2JATS 决赛展示能力的学术论文验收稿，"
+        "用于验证 DOCX 真实文档流解析、结构化 JSON、JATS XML、正式 Schema 校验和质量报告。"
     )
     document.add_paragraph(
-        "测试内容包括元数据、多级章节、列表、公式、图片、不同格式图题、"
-        "参考文献、基础校验及人工校正后重新生成 XML。"
+        "文档还包含图片、表格、列表、正文交叉引用、Word 原生公式和细粒度参考文献，"
+        "可用于演示人工校正后重新生成 XML 与 ZIP 交付闭环。"
     )
-    document.add_paragraph("关键词：JATS；Word；结构化出版；XML；人工校正")
+    document.add_paragraph("关键词：JATS；Word；结构化出版；OMML；质量校验")
 
     document.add_paragraph("1 引言")
     document.add_paragraph(
-        "学术期刊需要将作者提交的 Word 稿件转换为机器可读、可交换和可长期保存的结构化内容。"
+        "学术出版需要将作者提交的 Word 稿件转换为机器可读、可交换和可长期保存的结构化内容。"
     )
-
-    document.add_paragraph("1.1 研究背景")
     document.add_paragraph(
-        "传统人工标引流程成本较高，规则驱动方法可以提供透明、可复核的自动化转换起点。"
+        "如图1和表1所示，系统按真实文档顺序恢复出版对象；公式结果见式（1），"
+        "相关标准与研究见参考文献[1,2]。"
     )
 
-    document.add_paragraph("二、系统方法")
-    document.add_paragraph("系统采用无状态转换流水线，并依次执行以下步骤：")
-    document.add_paragraph("（1）解析 Word 段落、样式与文档媒体")
-    document.add_paragraph("（2）构建统一的 article JSON")
-    document.add_paragraph("（3）生成并校验 JATS XML")
+    document.add_paragraph("1.1 系统能力")
+    document.add_paragraph("（1）解析标题、作者、单位、摘要、关键词和多级章节")
+    document.add_paragraph("（2）绑定图片、图题、表格、表题和所属章节")
+    document.add_paragraph("（3）转换 OMML、恢复交叉引用并执行 JATS Schema 校验")
 
-    add_picture(document, "architecture.png", (0, 109, 119), 0)
+    document.add_paragraph("2 文档流与图表解析")
+    add_picture(document, "final_architecture.png", (0, 109, 119), 0)
     document.add_paragraph("图1 Word2JATS 系统总体架构")
-    add_picture(document, "workflow.png", (199, 138, 30), 1)
-    document.add_paragraph("图 2 实验流程")
-    add_picture(document, "modules.png", (52, 92, 128), 2)
-    document.add_paragraph("图1-1 核心模块关系")
-    add_picture(document, "overview.png", (78, 126, 92), 3)
-    document.add_paragraph("Fig. 4 Overview")
-    document.add_paragraph("Figure 5 Caption-only architecture description")
+    add_picture(document, "final_workflow.png", (199, 138, 30), 1)
+    document.add_paragraph("Figure 2 Conversion workflow")
+    document.add_paragraph("正文再次引用图 1和Figure 2，用于验证图引用反向统计。")
 
-    table = document.add_table(rows=3, cols=3)
+    document.add_paragraph("表1 核心模块与输出")
+    table = document.add_table(rows=4, cols=3)
     table.style = "Table Grid"
-    for cell, value in zip(table.rows[0].cells, ["指标", "方法A", "方法B"]):
-        cell.text = value
-    for cell, value in zip(table.rows[1].cells, ["准确率", "90%", "95%"]):
-        cell.text = value
-    for cell, value in zip(table.rows[2].cells, ["召回率", "87%", "93%"]):
-        cell.text = value
-    document.add_paragraph("表1 实验结果")
+    values = [
+        ["模块", "输入", "输出"],
+        ["文档流解析", "DOCX", "结构化 JSON"],
+        ["JATS 生成", "Article JSON", "article.xml"],
+        ["质量校验", "XML", "质量报告"],
+    ]
+    for row, values_row in zip(table.rows, values):
+        for cell, value in zip(row.cells, values_row):
+            cell.text = value
 
-    table = document.add_table(rows=2, cols=2)
+    document.add_paragraph("Table 2 Quality score example")
+    table = document.add_table(rows=3, cols=2)
     table.style = "Table Grid"
-    for cell, value in zip(table.rows[0].cells, ["Metric", "Value"]):
-        cell.text = value
-    for cell, value in zip(table.rows[1].cells, ["F1", "94%"]):
-        cell.text = value
-    document.add_paragraph("Table 2 Evaluation summary")
+    values = [["Metric", "Value"], ["XML well-formed", "100%"], ["Schema", "review"]]
+    for row, values_row in zip(table.rows, values):
+        for cell, value in zip(row.cells, values_row):
+            cell.text = value
+    document.add_paragraph("正文中的表 1与Table 2均可在图表预览页查看对应 JATS 片段。")
 
-    document.add_paragraph("（一）公式识别")
-    document.add_paragraph("F = α × precision + β × recall")
-    document.add_paragraph("x ≈ μ + σ")
-    document.add_paragraph("∑ x_i ≤ λ")
-    document.add_paragraph("∫ f(x) dx ≥ 0")
-    document.add_paragraph(r"\frac{a}{b} = \sqrt{c}")
-    document.add_paragraph("lim x→0 sin(x) / x = 1")
-    document.add_paragraph("log(a) + cos(β) = γ")
-    document.add_paragraph("其中各参数用于测试基础规则公式识别。")
+    document.add_paragraph("3 Word 原生公式转换")
+    document.add_paragraph("式（1）包含分数、上标和根号：")
+    add_basic_formula(document)
+    document.add_paragraph("式（2）为 2×2 矩阵：")
+    add_matrix_formula(document)
+    document.add_paragraph("式（3）为分段函数：")
+    add_cases_formula(document)
+    document.add_paragraph("式（4）包含带上下限的大运算符和常见重音：")
+    add_nary_and_accents(document)
+    document.add_paragraph("式（5）故意包含未完整支持的复杂重音，用于验证 partial 稳定降级：")
+    add_partial_formula(document)
 
-    document.add_paragraph("3 结果与讨论")
+    document.add_paragraph("4 质量闭环与交付")
     document.add_paragraph(
-        "转换完成后，用户可以查看 JSON 和 XML，在人工校正页面修改结构数据，"
-        "并根据修改后的 article JSON 重新生成 XML。"
+        "系统输出结构化 JSON、JATS XML、校验结果、质量分、原文映射视图和图表预览。"
+    )
+    document.add_paragraph(
+        "人工补充 ORCID、ISSN、DOI 等真实出版元数据后，可重新生成 XML 并再次执行 Schema 校验。"
+    )
+    document.add_paragraph(
+        "单篇结果可导出为包含 article.xml、article.json、校验报告、质量报告和媒体文件的 ZIP 包。"
     )
 
-    document.add_paragraph("3.1 校验结果")
+    document.add_paragraph("5 结论")
     document.add_paragraph(
-        "系统检查标题、摘要、关键词、章节、XML 合法性和 JATS 核心节点，"
-        "并提示 ORCID、单位、图题、公式、空章节及参考文献等出版质量问题。"
-    )
-
-    document.add_paragraph("4 结论")
-    document.add_paragraph(
-        "该验收稿件能够覆盖 Word2JATS 当前已实现的主要转换、校正和校验功能。"
+        "本验收稿作为仓库中唯一的人工测试 Word 文档，覆盖系统主要成功路径与可控降级路径。"
     )
 
     document.add_paragraph("参考文献")
-    document.add_paragraph("[1] 张三, 李四. 学术出版结构化技术研究[J]. 数字出版, 2025, 10(2): 1-8.")
-    document.add_paragraph("2. National Information Standards Organization. JATS: Journal Article Tag Suite[S].")
-    document.add_paragraph("（3）王五. Word 文档智能解析方法研究[J]. 出版科学, 2026, 34(1): 20-28.")
+    document.add_paragraph(
+        "[1] 张三, 李四. 学术出版结构化转换技术研究[J]. 数字出版, 2025, 10(2): 1-8. "
+        "doi:10.1234/w2j.2025.001"
+    )
+    document.add_paragraph(
+        "2. National Information Standards Organization. JATS: Journal Article Tag Suite[S]. 2024."
+    )
+    document.add_paragraph(
+        "（3）王五. Word 文档智能解析方法研究[J]. 出版科学, 2026, 34(1): 20-28."
+    )
     return document
 
 
-def build_image_edge_document() -> Document:
-    document = Document()
-    configure_document(document)
-    add_title(document, "Word2JATS 图片多于图题边界测试")
-    document.add_paragraph("测试作者")
-    document.add_paragraph("未来出版大学")
-    document.add_paragraph("摘要：该文档用于验证图片数量多于图题数量时的宽容绑定策略。")
-    document.add_paragraph("关键词：图片；图题；边界测试")
-    document.add_paragraph("1 图片测试")
-    document.add_paragraph("下方包含三张图片，但仅提供两个图题。")
-    add_picture(document, "edge_1.png", (0, 109, 119), 0)
-    add_picture(document, "edge_2.png", (199, 138, 30), 1)
-    add_picture(document, "edge_3.png", (52, 92, 128), 2)
-    document.add_paragraph("图1 第一张图片")
-    document.add_paragraph("Figure 2 Second image")
-    document.add_paragraph("References")
-    document.add_paragraph("[1] 图片边界测试参考文献.")
-    return document
-
-
-def build_omml_document() -> Document:
-    document = Document()
-    configure_document(document)
-    add_title(document, "Word2JATS Word 原生公式转换测试")
-    document.add_paragraph("公式测试作者")
-    document.add_paragraph("未来出版大学")
-    document.add_paragraph("摘要：该文档用于验证 Word 原生 OMML 到 MathML 的基础转换。")
-    document.add_paragraph("关键词：OMML；MathML；JATS")
-    document.add_paragraph("1 原生公式")
-    document.add_paragraph("下方公式包含分数、上标、根号和求和结构。")
-    add_native_formula(document)
-    document.add_paragraph("参考文献")
-    document.add_paragraph("[1] Word 原生公式转换测试参考文献.")
-    return document
+def generate(output: Path = FINAL_OUTPUT) -> Path:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    build_final_document().save(output)
+    return output
 
 
 if __name__ == "__main__":
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    build_main_document().save(MAIN_OUTPUT)
-    build_image_edge_document().save(EDGE_OUTPUT)
-    build_omml_document().save(OMML_OUTPUT)
-    print(MAIN_OUTPUT)
-    print(EDGE_OUTPUT)
-    print(OMML_OUTPUT)
+    print(generate())

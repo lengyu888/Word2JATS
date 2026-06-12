@@ -35,7 +35,9 @@ class QualityScorer:
                 "error_count": sum(item["level"] == "error" for item in issues),
                 "warning_count": sum(item["level"] == "warning" for item in issues),
                 "suggestion_count": sum(item["level"] == "suggestion" for item in issues),
+                "need_review_count": sum(item["level"] == "need_review" for item in issues),
             },
+            "formula_summary": self._formula_summary(article),
         }
 
     def _metadata(self, article: dict[str, Any], issues: list[dict[str, str]]) -> int:
@@ -99,17 +101,51 @@ class QualityScorer:
         formulas = article.get("formulas", [])
         if not formulas:
             return 100
-        valid = 0
+        earned = 0.0
         for formula in formulas:
             formula_id = formula.get("id", "unknown")
             content = formula.get("mathml") or formula.get("latex") or formula.get("content")
-            if content:
-                valid += 1
-            else:
+            status = formula.get("conversion_status", "success" if content else "failed")
+            if not content:
                 self._issue(issues, "warning", "formula", f"article.formulas.{formula_id}", f"{formula_id} 没有可交付公式内容", "补充 MathML、LaTeX 或纯文本公式")
+            if status == "success":
+                earned += 1
+            elif status == "partial":
+                earned += 0.75
+                unsupported = "、".join(formula.get("unsupported_features", [])) or "未知结构"
+                self._issue(
+                    issues, "need_review", "formula", f"article.formulas.{formula_id}",
+                    f"{formula_id} 为部分转换，不支持特性：{unsupported}",
+                    "人工复核 MathML 与 LaTeX，并按需校正公式",
+                )
+            else:
+                earned += 0.25 if content else 0
+                self._issue(
+                    issues, "warning", "formula", f"article.formulas.{formula_id}",
+                    f"{formula_id} 转换失败或仅保留回退内容",
+                    "需要人工复核并补充 MathML 或 LaTeX",
+                )
             if formula.get("type") == "omml" and not formula.get("mathml"):
                 self._issue(issues, "suggestion", "formula", f"article.formulas.{formula_id}.mathml", f"{formula_id} 的 OMML 未转换为 MathML", "人工复核公式或扩展 OMML 转换规则")
-        return round(valid / len(formulas) * 100)
+        return round(earned / len(formulas) * 100)
+
+    @staticmethod
+    def _formula_summary(article: dict[str, Any]) -> dict[str, Any]:
+        formulas = article.get("formulas", [])
+        statuses = {"success": 0, "partial": 0, "failed": 0}
+        unsupported = set()
+        mathml_count = 0
+        for formula in formulas:
+            status = formula.get("conversion_status", "success")
+            statuses[status if status in statuses else "failed"] += 1
+            mathml_count += bool(formula.get("mathml"))
+            unsupported.update(formula.get("unsupported_features", []))
+        return {
+            "total": len(formulas),
+            "mathml_success": mathml_count,
+            **statuses,
+            "unsupported_features": sorted(unsupported),
+        }
 
     def _references(self, article: dict[str, Any], issues: list[dict[str, str]]) -> int:
         references = article.get("references", [])

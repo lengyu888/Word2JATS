@@ -8,6 +8,8 @@ import ValidationPanel from './components/ValidationPanel.vue'
 import CorrectionEditor from './components/CorrectionEditor.vue'
 import BatchResults from './components/BatchResults.vue'
 import QualityReport from './components/QualityReport.vue'
+import FlowMappingViewer from './components/FlowMappingViewer.vue'
+import FigureTablePreview from './components/FigureTablePreview.vue'
 import { batchConvertDocuments, exportPackage, generateXml, getDemoDocument, getProfiles } from './api/convert'
 
 const loading = ref(false)
@@ -102,7 +104,7 @@ async function regenerate(article) {
     const generated = await generateXml(article)
     result.value = {
       ...result.value,
-      article,
+      article: generated.article || article,
       xml: generated.xml,
       validation: generated.validation,
       quality_report: generated.quality_report,
@@ -183,9 +185,22 @@ async function regenerate(article) {
             />
           </el-tab-pane>
           <el-tab-pane label="结构化 JSON" name="json"><JsonViewer :data="result.article" /></el-tab-pane>
+          <el-tab-pane label="文档流对照" name="flow">
+            <FlowMappingViewer :flow="result.article.document_flow_view || []" :xml="result.xml" />
+          </el-tab-pane>
+          <el-tab-pane label="图表预览" name="visual">
+            <FigureTablePreview
+              :figures="result.article.figures || []"
+              :tables="result.article.tables || []"
+              :xml="result.xml"
+              :quality-report="result.quality_report"
+            />
+          </el-tab-pane>
           <el-tab-pane label="JATS XML" name="xml"><XmlViewer :xml="result.xml" /></el-tab-pane>
           <el-tab-pane label="校验结果" name="validation"><ValidationPanel :validation="result.validation" /></el-tab-pane>
-          <el-tab-pane label="质量报告" name="quality"><QualityReport :report="result.quality_report" /></el-tab-pane>
+          <el-tab-pane label="质量报告" name="quality">
+            <QualityReport :report="result.quality_report" :formulas="result.article.formulas || []" />
+          </el-tab-pane>
         </el-tabs>
       </section>
 

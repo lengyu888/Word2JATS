@@ -7,6 +7,8 @@ from app.services.docx_parser import DocxParser
 from app.services.jats_generator import JatsGenerator
 from app.services.omml_converter import OmmlConverter
 from app.services.validator import ArticleValidator
+from app.services.quality_scorer import QualityScorer
+from app.services.jats_schema_validator import JatsSchemaValidator
 
 
 OMML_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
@@ -30,6 +32,54 @@ COMPLEX_OMML = f"""
   </m:nary>
   <m:r><m:t>+</m:t></m:r>
   <m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/></m:dPr><m:e><m:r><m:t>q</m:t></m:r></m:e></m:d>
+</m:oMath>
+""".strip()
+
+MATRIX_OMML = f"""
+<m:oMath xmlns:m="{OMML_NS}"><m:m>
+  <m:mr><m:e><m:r><m:t>a</m:t></m:r></m:e><m:e><m:r><m:t>b</m:t></m:r></m:e></m:mr>
+  <m:mr><m:e><m:r><m:t>c</m:t></m:r></m:e><m:e><m:r><m:t>d</m:t></m:r></m:e></m:mr>
+</m:m></m:oMath>
+""".strip()
+
+EQARR_OMML = f"""
+<m:oMath xmlns:m="{OMML_NS}"><m:eqArr>
+  <m:e><m:r><m:t>x=1</m:t></m:r></m:e>
+  <m:e><m:r><m:t>y=2</m:t></m:r></m:e>
+  <m:e><m:r><m:t>z=3</m:t></m:r></m:e>
+</m:eqArr></m:oMath>
+""".strip()
+
+CASES_OMML = f"""
+<m:oMath xmlns:m="{OMML_NS}"><m:d>
+  <m:dPr><m:begChr m:val="{{"/><m:endChr m:val=""/></m:dPr>
+  <m:e><m:eqArr>
+    <m:e><m:r><m:t>x, x&gt;0</m:t></m:r></m:e>
+    <m:e><m:r><m:t>-x, x≤0</m:t></m:r></m:e>
+  </m:eqArr></m:e>
+</m:d></m:oMath>
+""".strip()
+
+NARY_LIMITS_OMML = f"""
+<m:oMath xmlns:m="{OMML_NS}">
+  <m:nary><m:naryPr><m:chr m:val="∑"/></m:naryPr><m:sub><m:r><m:t>i=1</m:t></m:r></m:sub><m:sup><m:r><m:t>n</m:t></m:r></m:sup><m:e><m:r><m:t>x_i</m:t></m:r></m:e></m:nary>
+  <m:nary><m:naryPr><m:chr m:val="∫"/></m:naryPr><m:sub><m:r><m:t>0</m:t></m:r></m:sub><m:sup><m:r><m:t>1</m:t></m:r></m:sup><m:e><m:r><m:t>f(x)dx</m:t></m:r></m:e></m:nary>
+</m:oMath>
+""".strip()
+
+ACCENT_OMML = f"""
+<m:oMath xmlns:m="{OMML_NS}">
+  <m:acc><m:accPr><m:chr m:val="^"/></m:accPr><m:e><m:r><m:t>x</m:t></m:r></m:e></m:acc>
+  <m:acc><m:accPr><m:chr m:val="¯"/></m:accPr><m:e><m:r><m:t>y</m:t></m:r></m:e></m:acc>
+  <m:acc><m:accPr><m:chr m:val="˙"/></m:accPr><m:e><m:r><m:t>z</m:t></m:r></m:e></m:acc>
+  <m:acc><m:accPr><m:chr m:val="~"/></m:accPr><m:e><m:r><m:t>q</m:t></m:r></m:e></m:acc>
+</m:oMath>
+""".strip()
+
+PARTIAL_OMML = f"""
+<m:oMath xmlns:m="{OMML_NS}">
+  <m:acc><m:accPr><m:chr m:val="⏞"/></m:accPr><m:e><m:r><m:t>x</m:t></m:r></m:e></m:acc>
+  <m:unknownComplex><m:r><m:t>kept</m:t></m:r></m:unknownComplex>
 </m:oMath>
 """.strip()
 
@@ -141,13 +191,97 @@ def test_validator_warns_when_omml_mathml_conversion_is_unavailable():
 
 
 def test_committed_native_formula_sample_converts_to_mathml(tmp_path):
-    path = Path(__file__).resolve().parents[2] / "sample_documents" / "word2jats_omml_formulas.docx"
+    path = Path(__file__).resolve().parents[2] / "sample_documents" / "word2jats_final_acceptance.docx"
 
     article = DocxParser(path, tmp_path / "media").parse()
 
-    assert len(article["formulas"]) == 1
+    assert len(article["formulas"]) == 5
     assert article["formulas"][0]["type"] == "omml"
     assert "<mml:mfrac>" in article["formulas"][0]["mathml"]
     assert "<mml:msup>" in article["formulas"][0]["mathml"]
     assert "<mml:msqrt>" in article["formulas"][0]["mathml"]
-    assert "<mml:munderover>" in article["formulas"][0]["mathml"]
+    assert "<mml:munderover>" in article["formulas"][3]["mathml"]
+
+
+def test_omml_matrix_to_mathml():
+    result = OmmlConverter().convert(MATRIX_OMML)
+    assert result["conversion_status"] == "success"
+    assert "matrix" in result["supported_features"]
+    assert result["mathml"].count("<mml:mtr>") == 2
+    assert result["mathml"].count("<mml:mtd>") == 4
+    assert r"\begin{matrix}" in result["latex"]
+
+
+def test_omml_equation_array_to_mathml():
+    result = OmmlConverter().convert(EQARR_OMML)
+    assert result["conversion_status"] == "success"
+    assert "equation_array" in result["supported_features"]
+    assert result["mathml"].count("<mml:mtr>") == 3
+    assert r"\begin{aligned}" in result["latex"]
+
+
+def test_omml_cases_partial_or_success():
+    result = OmmlConverter().convert(CASES_OMML)
+    assert result["conversion_status"] in {"success", "partial"}
+    assert "cases" in result["supported_features"]
+    assert 'open="{" close=""' in result["mathml"]
+    assert r"\begin{cases}" in result["latex"]
+
+
+def test_omml_nary_limits():
+    result = OmmlConverter().convert(NARY_LIMITS_OMML)
+    assert result["conversion_status"] == "success"
+    assert result["mathml"].count("<mml:munderover>") == 2
+    assert r"\sum_{i=1}^{n}" in result["latex"]
+    assert r"\int_{0}^{1}" in result["latex"]
+
+
+def test_omml_accent():
+    result = OmmlConverter().convert(ACCENT_OMML)
+    assert result["conversion_status"] == "success"
+    assert result["mathml"].count("<mml:mover") == 4
+    assert r"\hat{x}" in result["latex"]
+    assert r"\bar{y}" in result["latex"]
+    assert r"\dot{z}" in result["latex"]
+    assert r"\tilde{q}" in result["latex"]
+
+
+def test_omml_partial_does_not_break_jats_generation():
+    converted = OmmlConverter().convert(PARTIAL_OMML)
+    formula = {
+        "id": "eq1", "content": "x kept", "type": "omml", "omml": PARTIAL_OMML,
+        "mathml": converted["mathml"], "latex": converted["latex"],
+        "conversion_status": converted["conversion_status"],
+        "supported_features": converted["supported_features"],
+        "unsupported_features": converted["unsupported_features"],
+        "issues": converted["issues"], "section_index": 0,
+    }
+    article = {
+        "title": "Partial", "abstract": "Abstract", "keywords": ["a", "b", "c"],
+        "journal_title": "Test Journal", "journal_id": "TEST", "issn": "1234-5678",
+        "publisher_name": "Test Publisher",
+        "sections": [{"title": "Method", "paragraphs": ["Text"]}],
+        "authors": [{"name": "Alice Smith", "orcid": "0000-0002-0000-0001", "affiliation_ids": ["aff1"]}],
+        "affiliations": ["Publishing Lab"], "figures": [], "tables": [], "lists": [],
+        "formulas": [formula], "references": [],
+    }
+    xml = JatsGenerator().generate(article)
+    validation = ArticleValidator().validate(article, xml)
+    quality = QualityScorer().score(article, validation)
+
+    assert converted["conversion_status"] == "partial"
+    assert converted["unsupported_features"]
+    assert "<disp-formula" in xml and "<mml:math" in xml
+    assert any("人工复核" in warning for warning in validation["warnings"])
+    assert any(issue["module"] == "formula" for issue in quality["issues"])
+    assert JatsSchemaValidator().validate(xml)["jats_schema_valid"] is True
+
+
+def test_committed_final_acceptance_document_has_stable_omml_degradation(tmp_path):
+    path = Path(__file__).resolve().parents[2] / "sample_documents" / "word2jats_final_acceptance.docx"
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert len(article["formulas"]) == 5
+    assert sum(item["conversion_status"] == "success" for item in article["formulas"]) == 4
+    assert sum(item["conversion_status"] == "partial" for item in article["formulas"]) == 1
+    assert all(item["mathml"] for item in article["formulas"])

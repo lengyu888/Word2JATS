@@ -20,6 +20,13 @@ class Figure(BaseModel):
     caption: str = ""
     path: str = ""
     section_index: int = -1
+    filename: str = ""
+    media_url: str = ""
+    section_id: str = ""
+    section_title: str = ""
+    referenced_by: list[str] = Field(default_factory=list)
+    status: str = "ok"
+    issues: list["FlowViewIssue"] = Field(default_factory=list)
 
 
 class ArticleTable(BaseModel):
@@ -27,6 +34,13 @@ class ArticleTable(BaseModel):
     caption: str = ""
     rows: list[list[str]] = Field(default_factory=list)
     section_index: int = -1
+    section_id: str = ""
+    section_title: str = ""
+    referenced_by: list[str] = Field(default_factory=list)
+    row_count: int = 0
+    column_count: int = 0
+    status: str = "ok"
+    issues: list["FlowViewIssue"] = Field(default_factory=list)
 
 
 class ArticleList(BaseModel):
@@ -43,6 +57,10 @@ class Formula(BaseModel):
     latex: str = ""
     type: str = "plain_text"
     section_index: int = -1
+    conversion_status: str = "success"
+    supported_features: list[str] = Field(default_factory=list)
+    unsupported_features: list[str] = Field(default_factory=list)
+    issues: list[dict] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -56,6 +74,10 @@ class Formula(BaseModel):
         )
         normalized.setdefault("latex", normalized.get("tex") or "")
         normalized.setdefault("type", "plain_text")
+        normalized.setdefault(
+            "conversion_status",
+            "failed" if normalized.get("type") == "omml" and not normalized.get("mathml") else "success",
+        )
         return normalized
 
 
@@ -95,6 +117,34 @@ class Reference(BaseModel):
         return normalized
 
 
+class FlowViewIssue(BaseModel):
+    level: str = "warning"
+    message: str = ""
+    suggestion: str = ""
+
+
+class FlowViewSource(BaseModel):
+    paragraph_index: int | None = None
+    table_index: int | None = None
+    media_name: str | None = None
+
+
+class FlowViewNode(BaseModel):
+    index: int
+    node_type: str
+    text: str = ""
+    preview: str = ""
+    section_id: str = ""
+    section_title: str = ""
+    jats_path: str = ""
+    jats_tag: str = "unknown"
+    target_id: str | None = None
+    confidence: float = 0.0
+    status: str = "need_review"
+    issues: list[FlowViewIssue] = Field(default_factory=list)
+    source: FlowViewSource = Field(default_factory=FlowViewSource)
+
+
 class Article(BaseModel):
     title: str = ""
     doi: str = ""
@@ -119,6 +169,7 @@ class Article(BaseModel):
     lists: list[ArticleList] = Field(default_factory=list)
     formulas: list[Formula] = Field(default_factory=list)
     references: list[Reference] = Field(default_factory=list)
+    document_flow_view: list[FlowViewNode] = Field(default_factory=list)
 
 
 class ValidationResult(BaseModel):
@@ -147,14 +198,17 @@ class QualityReport(BaseModel):
     scores: dict[str, int] = Field(default_factory=dict)
     issues: list[QualityIssue] = Field(default_factory=list)
     summary: dict[str, int] = Field(default_factory=dict)
+    formula_summary: dict = Field(default_factory=dict)
 
 
 class ConvertResponse(BaseModel):
     success: bool
+    conversion_id: str
     article: Article
     xml: str
     validation: ValidationResult
     quality_report: QualityReport | None = None
+    media_paths: list[str] = Field(default_factory=list)
 
 
 class GenerateXmlRequest(BaseModel):
@@ -163,6 +217,7 @@ class GenerateXmlRequest(BaseModel):
 
 class GenerateXmlResponse(BaseModel):
     success: bool
+    article: Article
     xml: str
     validation: ValidationResult
     quality_report: QualityReport | None = None
@@ -171,6 +226,7 @@ class GenerateXmlResponse(BaseModel):
 class BatchConvertItem(BaseModel):
     filename: str
     status: str
+    conversion_id: str = ""
     article: Article | None = None
     xml: str = ""
     validation: ValidationResult | None = None

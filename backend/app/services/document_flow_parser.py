@@ -51,11 +51,24 @@ class DocumentFlowParser:
         if body is None:
             return []
         nodes = []
+        paragraph_index = 0
+        table_index = 0
         for element in body:
             if element.tag == f"{{{self.NS['w']}}}p":
-                nodes.extend(self._parse_paragraph(element, relationships))
+                parsed = self._parse_paragraph(element, relationships)
+                for node in parsed:
+                    node["paragraph_index"] = paragraph_index
+                    node["table_index"] = None
+                nodes.extend(parsed)
+                paragraph_index += 1
             elif element.tag == f"{{{self.NS['w']}}}tbl":
-                nodes.append({"type": "table", "rows": self._parse_table(element)})
+                nodes.append({
+                    "type": "table",
+                    "rows": self._parse_table(element),
+                    "paragraph_index": None,
+                    "table_index": table_index,
+                })
+                table_index += 1
         for index, node in enumerate(nodes):
             node["flow_index"] = index
         return nodes
@@ -97,6 +110,10 @@ class DocumentFlowParser:
                     "omml": omml,
                     "mathml": converted["mathml"],
                     "latex": converted["latex"],
+                    "conversion_status": converted["conversion_status"],
+                    "supported_features": converted["supported_features"],
+                    "unsupported_features": converted["unsupported_features"],
+                    "issues": converted["issues"],
                 })
             return formulas
         return [{**base, "type": self._classify_paragraph(paragraph, text, style)}]

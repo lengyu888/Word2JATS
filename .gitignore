@@ -11,6 +11,7 @@ venv/
 node_modules/
 dist/
 sample_documents/_media_check/
+sample_documents/evaluation/
 backend/temp/
 
 # IDE / OS

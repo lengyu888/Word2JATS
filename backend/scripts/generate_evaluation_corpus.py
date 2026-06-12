@@ -9,7 +9,10 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
-from generate_sample_docx import add_native_formula, add_picture, configure_document
+try:
+    from scripts.generate_sample_docx import add_basic_formula, add_picture, configure_document
+except ModuleNotFoundError:
+    from generate_sample_docx import add_basic_formula, add_picture, configure_document
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -150,7 +153,7 @@ def build_sample(kind: str, index: int) -> tuple[Document, dict, str]:
             document.add_paragraph(text)
             formulas.append({})
         if index >= 3:
-            add_native_formula(document)
+            add_basic_formula(document)
             formulas.append({})
         if index == 5:
             document.add_paragraph("矩阵 A 的特征值需要人工复核")
@@ -206,12 +209,18 @@ def build_sample(kind: str, index: int) -> tuple[Document, dict, str]:
     return document, golden, language
 
 
-def generate() -> list[dict]:
-    SAMPLE_DIR.mkdir(parents=True, exist_ok=True)
-    GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
-    for path in GOLDEN_DIR.glob("eval_*.json"):
+def generate(
+    sample_dir: Path = SAMPLE_DIR,
+    golden_dir: Path = GOLDEN_DIR,
+    manifest_path: Path = MANIFEST_PATH,
+) -> list[dict]:
+    """Generate the reproducible evaluation corpus at configurable locations."""
+    sample_dir.mkdir(parents=True, exist_ok=True)
+    golden_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    for path in golden_dir.glob("eval_*.json"):
         path.unlink()
-    for path in SAMPLE_DIR.glob("eval_*.docx"):
+    for path in sample_dir.glob("eval_*.docx"):
         path.unlink()
 
     manifest = []
@@ -219,8 +228,8 @@ def generate() -> list[dict]:
         for index in range(1, 6):
             stem = f"eval_{kind}_{index:02d}"
             document, golden, language = build_sample(kind, index)
-            document.save(SAMPLE_DIR / f"{stem}.docx")
-            (GOLDEN_DIR / f"{stem}.json").write_text(
+            document.save(sample_dir / f"{stem}.docx")
+            (golden_dir / f"{stem}.json").write_text(
                 json.dumps(golden, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             manifest.append({
@@ -230,7 +239,7 @@ def generate() -> list[dict]:
                 "language": language,
                 "difficulty": "hard" if kind in {"anomaly", "reference"} and index >= 4 else "standard",
             })
-    MANIFEST_PATH.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
 
 

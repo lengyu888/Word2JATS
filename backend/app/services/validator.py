@@ -99,6 +99,14 @@ class ArticleValidator:
                 warnings.append(
                     f"公式 {formula.get('id') or index} 的 OMML 无法转换为 MathML，已保留文本回退。"
                 )
+            status = formula.get("conversion_status", "success")
+            if status == "partial":
+                unsupported = "、".join(formula.get("unsupported_features", [])) or "未知结构"
+                warnings.append(
+                    f"公式 {formula.get('id') or index} 为部分转换，不支持特性：{unsupported}，需要人工复核。"
+                )
+            elif status == "failed":
+                warnings.append(f"公式 {formula.get('id') or index} 转换失败，需要人工复核。")
         for section in article.get("sections", []):
             if not section.get("paragraphs"):
                 warnings.append(f"章节“{section.get('title', '未命名章节')}”没有正文段落。")

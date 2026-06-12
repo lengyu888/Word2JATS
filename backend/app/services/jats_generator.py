@@ -33,8 +33,8 @@ class JatsGenerator:
 
         body = etree.SubElement(root, "body")
         section_elements = []
-        for section in article["sections"]:
-            sec = etree.SubElement(body, "sec")
+        for section_index, section in enumerate(article["sections"], start=1):
+            sec = etree.SubElement(body, "sec", id=f"sec{section_index}")
             sec.set("sec-type", f"level-{section.get('level', 1)}")
             etree.SubElement(sec, "title").text = section["title"]
             for paragraph in section.get("paragraphs", []):
