@@ -26,11 +26,16 @@ export async function getProfiles() {
   return response.data.profiles
 }
 
-export async function getDemoDocument() {
-  const response = await client.get('/demo-document', { responseType: 'blob' })
-  return new File([response.data], 'word2jats_final_acceptance.docx', {
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  })
+export async function getDemoDocuments() {
+  const listing = await client.get('/demo-documents')
+  return Promise.all(listing.data.documents.map(async (document) => {
+    const response = await client.get(document.download_url.replace(/^\/api/, ''), {
+      responseType: 'blob',
+    })
+    return new File([response.data], document.filename, {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
+  }))
 }
 
 export async function generateXml(article) {

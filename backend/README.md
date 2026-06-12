@@ -2,6 +2,19 @@
 
 FastAPI 后端负责上传、DOCX 文档流解析、Article JSON 构建、JATS XML 生成、正式 Schema 校验、质量评分、人工校正后重生成、媒体预览和 ZIP 导出。
 
+## 当前支持
+
+| 能力 | 状态 |
+| --- | --- |
+| DOCX 真实文档流解析与原文映射 | 已支持 |
+| 图片、表格、列表、章节归属与可视化预览 | 已支持 |
+| OMML 转 MathML/LaTeX 与稳定降级 | 已支持 |
+| 图、表、公式、参考文献交叉引用恢复 | 已支持 |
+| 参考文献细粒度解析与 `element-citation` | 已支持 |
+| JATS Publishing 1.4 MathML3 DTD 校验 | 已支持 |
+| Schema 白名单自动修复与人工校正闭环 | 已支持 |
+| 批量转换与 ZIP 结果包 | 已支持 |
+
 ## 技术栈
 
 Python 3.10+、FastAPI、python-docx、lxml、Pydantic、PyYAML、pytest。
@@ -20,7 +33,9 @@ python -m uvicorn app.main:app --reload --port 8000
 - 单篇转换：`POST /api/convert`
 - 批量转换：`POST /api/batch-convert`
 - 人工校正后生成：`POST /api/generate-xml`
-- 演示稿下载：`GET /api/demo-document`
+- 兼容单篇演示稿下载：`GET /api/demo-document`
+- 演示稿清单：`GET /api/demo-documents`
+- 白名单演示稿下载：`GET /api/demo-documents/{filename}`
 - 安全媒体预览：`GET /api/media/{conversion_id}/{filename}`
 - ZIP 导出：`POST /api/export-package`
 
@@ -35,19 +50,22 @@ python -m uvicorn app.main:app --reload --port 8000
 7. `ArticleValidator`、`QualityScorer` 汇总业务规则、引用完整性、质量分和修复建议。
 8. `FlowViewBuilder`、`VisualPreviewBuilder` 为前端生成文档流映射和图表预览数据。
 
-## 唯一验收文档
+## 演示与测试文档
 
 ```text
 sample_documents/word2jats_final_acceptance.docx
+sample_documents/真实参考论文.docx
 ```
 
-重新生成：
+`word2jats_final_acceptance.docx` 用于稳定的全流程回归测试，覆盖完整成功路径和一个可控的复杂 OMML `partial` 路径；`真实参考论文.docx` 用于观察真实论文排版下的规则解析效果。前端一键演示会同时加载两篇文档并调用 `/api/batch-convert`。
+
+全流程验收稿可重新生成：
 
 ```bash
 python scripts/generate_sample_docx.py
 ```
 
-该文件覆盖完整成功路径和一个可控的复杂 OMML `partial` 路径。后端集成测试会验证其结构数量、MathML 状态、JATS 标签、文档流映射、图表预览，以及人工补齐出版元数据后的正式 Schema 通过状态。
+后端集成测试会验证全流程验收稿的结构数量、MathML 状态、JATS 标签、文档流映射、图表预览，以及人工补齐出版元数据后的正式 Schema 通过状态。真实参考论文不会被生成脚本覆盖。
 
 ## OMML 能力矩阵
 
@@ -81,7 +99,7 @@ python -m pytest -q
 python evaluate.py
 ```
 
-`evaluate.py` 在系统临时目录按需生成 30 篇分层合成 Word，评测完成后自动删除。仓库只提交 Golden JSON、manifest、评测报告和唯一验收 Word，不长期保存 30 篇评测 DOCX。
+`evaluate.py` 在系统临时目录按需生成 30 篇分层合成 Word，评测完成后自动删除。仓库保留 Golden JSON、manifest、评测报告和两篇演示文档，不长期保存 30 篇评测 DOCX。
 
 指标包括标题、摘要、关键词、章节、图表绑定、公式、参考文献、交叉引用、XML 合法率、原始 Schema 通过率、人工校正后 Schema 通过率和平均耗时。
 
@@ -98,8 +116,10 @@ media/
 
 ## 当前真实限制
 
-- 复杂排版、多作者多单位映射仍可能需要人工校正。
-- 复杂嵌套矩阵、复杂分段、多重重音、图片公式 OCR 尚未完整支持。
-- 复杂合并单元格、跨页表格、嵌套列表和非标准参考文献仍需增强。
-- 正式 Schema 通过依赖真实期刊级元数据。
-- 大规模生产任务仍需异步队列、鉴权、并发限制和临时结果清理策略。
+- 启发式规则面对复杂排版、多作者多单位映射时仍可能需要人工校正。
+- 不保证覆盖全部 Office Math；复杂嵌套矩阵、复杂分段、多重重音和未知 OMML 子结构会标记 `partial/failed`。
+- 图片公式暂不支持 OCR，系统不调用商业 API。
+- 复杂合并单元格、跨页表格、嵌套列表和非标准参考文献仍需人工复核。
+- 正式 DTD 校验不会自动编造 ISSN、DOI、ORCID 等真实出版元数据。
+- 当前批量转换为请求内顺序处理，生产环境仍可扩展任务队列、鉴权和结果过期清理。
+- 质量分是可解释的规则评分，不等同于出版社最终验收结论。

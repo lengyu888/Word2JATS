@@ -15,15 +15,18 @@ Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统直�
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
 
-## 唯一验收文档
+## 演示与测试文档
 
-仓库只保留一篇人工验收 Word：
+仓库提供两篇前端演示文档：
 
 ```text
 sample_documents/word2jats_final_acceptance.docx
+sample_documents/真实参考论文.docx
 ```
 
-该文档覆盖元数据、多级章节、列表、中英文图题和表题、图片、Word 表格、正文交叉引用、普通与扩展 OMML、可控 `partial` 降级、参考文献和人工校正场景。前端“一键加载演示数据”和后端 `/api/demo-document` 均使用此文件。
+`word2jats_final_acceptance.docx` 是系统全流程验收稿，覆盖元数据、多级章节、列表、中英文图题和表题、图片、Word 表格、正文交叉引用、普通与扩展 OMML、可控 `partial` 降级、参考文献和人工校正场景。`真实参考论文.docx` 用于观察真实论文排版下的规则识别效果。
+
+前端点击“一键加载两篇演示数据”后，会通过 `/api/demo-documents` 获取两篇文档，并调用现有批量转换流程。旧接口 `/api/demo-document` 继续保留，用于兼容仅加载全流程验收稿的调用方。
 
 重新生成：
 
@@ -81,7 +84,7 @@ npm run build
 
 ## 使用流程
 
-1. 选择期刊 Profile，上传 DOCX 或一键加载验收文档。
+1. 选择期刊 Profile，上传 DOCX 或一键加载两篇演示文档。
 2. 查看结构化 JSON、JATS XML、校验结果和质量报告。
 3. 在“文档流对照”查看原文节点到 JATS 标签的映射。
 4. 在“图表预览”核对图片、表格、题注、引用和 JATS 片段。
@@ -92,7 +95,7 @@ npm run build
 ## 决赛展示流程
 
 1. 执行 `docker compose up --build` 并访问 `http://localhost:8080`。
-2. 点击“一键加载演示数据”，展示唯一验收稿的完整转换。
+2. 点击“一键加载两篇演示数据”，对比全流程验收稿与真实参考论文的转换结果。
 3. 展示文档流对照、图表预览、OMML 转换和正文交叉引用恢复。
 4. 展示质量总分、分项得分、问题定位和修复建议。
 5. 在人工校正页补充出版元数据，重新生成 XML 并展示 Schema 状态变化。
@@ -103,6 +106,8 @@ npm run build
 - `GET /api/health`
 - `GET /api/profiles`
 - `GET /api/demo-document`
+- `GET /api/demo-documents`
+- `GET /api/demo-documents/{filename}`
 - `GET /api/media/{conversion_id}/{filename}`
 - `POST /api/convert`
 - `POST /api/batch-convert`

@@ -1,6 +1,7 @@
 import mimetypes
 import re
 from pathlib import Path
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -34,6 +35,10 @@ quality_scorer = QualityScorer()
 flow_view_builder = FlowViewBuilder()
 visual_preview_builder = VisualPreviewBuilder()
 SAMPLE_ROOT = Path(__file__).resolve().parents[3] / "sample_documents"
+DEMO_DOCUMENT_NAMES = (
+    "word2jats_final_acceptance.docx",
+    "真实参考论文.docx",
+)
 CONVERSION_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 MEDIA_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
@@ -164,8 +169,37 @@ def read_media(conversion_id: str, filename: str) -> FileResponse:
 
 @router.get("/demo-document")
 def demo_document() -> FileResponse:
-    path = SAMPLE_ROOT / "word2jats_final_acceptance.docx"
+    path = SAMPLE_ROOT / DEMO_DOCUMENT_NAMES[0]
     if not path.exists():
+        raise HTTPException(status_code=404, detail="Demo document is not available.")
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=path.name,
+    )
+
+
+@router.get("/demo-documents")
+def list_demo_documents() -> dict:
+    documents = [
+        {
+            "filename": filename,
+            "download_url": f"/api/demo-documents/{quote(filename)}",
+        }
+        for filename in DEMO_DOCUMENT_NAMES
+        if (SAMPLE_ROOT / filename).is_file()
+    ]
+    if not documents:
+        raise HTTPException(status_code=404, detail="Demo documents are not available.")
+    return {"documents": documents}
+
+
+@router.get("/demo-documents/{filename}")
+def read_demo_document(filename: str) -> FileResponse:
+    if filename not in DEMO_DOCUMENT_NAMES:
+        raise HTTPException(status_code=404, detail="Demo document is not available.")
+    path = SAMPLE_ROOT / filename
+    if not path.is_file():
         raise HTTPException(status_code=404, detail="Demo document is not available.")
     return FileResponse(
         path,

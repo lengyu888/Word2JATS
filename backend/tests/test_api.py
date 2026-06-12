@@ -24,6 +24,29 @@ def test_demo_document_endpoint():
     assert response.content.startswith(b"PK")
 
 
+def test_demo_documents_endpoint_lists_and_downloads_both_demo_files():
+    response = client.get("/api/demo-documents")
+
+    assert response.status_code == 200
+    documents = response.json()["documents"]
+    assert [item["filename"] for item in documents] == [
+        "word2jats_final_acceptance.docx",
+        "真实参考论文.docx",
+    ]
+    assert "%E7%9C%9F%E5%AE%9E%E5%8F%82%E8%80%83%E8%AE%BA%E6%96%87.docx" in documents[1]["download_url"]
+
+    for document in documents:
+        download = client.get(document["download_url"])
+        assert download.status_code == 200
+        assert download.content.startswith(b"PK")
+
+
+def test_demo_documents_endpoint_rejects_files_outside_allowlist():
+    response = client.get("/api/demo-documents/../README.md")
+
+    assert response.status_code in {404, 405}
+
+
 def test_profiles_endpoint_and_convert_profile_parameter():
     profiles = client.get("/api/profiles")
     assert profiles.status_code == 200

@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     volumes:
       - word2jats-temp:/app/temp
     healthcheck:

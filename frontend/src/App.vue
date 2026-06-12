@@ -10,7 +10,7 @@ import BatchResults from './components/BatchResults.vue'
 import QualityReport from './components/QualityReport.vue'
 import FlowMappingViewer from './components/FlowMappingViewer.vue'
 import FigureTablePreview from './components/FigureTablePreview.vue'
-import { batchConvertDocuments, exportPackage, generateXml, getDemoDocument, getProfiles } from './api/convert'
+import { batchConvertDocuments, exportPackage, generateXml, getDemoDocuments, getProfiles } from './api/convert'
 
 const loading = ref(false)
 const regenerating = ref(false)
@@ -48,9 +48,9 @@ async function convert(files, profile) {
 async function loadDemo(profile = 'default') {
   loading.value = true
   try {
-    const file = await getDemoDocument()
-    await convert([file], profile)
-    ElMessage.success('演示稿已加载并完成转换')
+    const files = await getDemoDocuments()
+    await convert(files, profile)
+    ElMessage.success(`${files.length} 篇演示稿已加载并完成批量转换`)
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '演示数据加载失败')
   } finally {
