@@ -13,6 +13,7 @@ dist/
 sample_documents/_media_check/
 sample_documents/evaluation/
 backend/temp/
+.worktrees/
 
 # IDE / OS
 .idea/
