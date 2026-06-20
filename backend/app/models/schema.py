@@ -209,6 +209,7 @@ class ConvertResponse(BaseModel):
     validation: ValidationResult
     quality_report: QualityReport | None = None
     media_paths: list[str] = Field(default_factory=list)
+    official_comparison: dict = Field(default_factory=dict)
 
 
 class GenerateXmlRequest(BaseModel):
@@ -232,6 +233,7 @@ class BatchConvertItem(BaseModel):
     validation: ValidationResult | None = None
     quality_report: QualityReport | None = None
     media_paths: list[str] = Field(default_factory=list)
+    official_comparison: dict = Field(default_factory=dict)
     error: str = ""
 
 

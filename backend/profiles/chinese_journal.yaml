@@ -1,6 +1,7 @@
 profile_name: Chinese journal
 journal_title: 中文学术期刊
 journal_id: CN-DEMO
+issn: 2750-0002
 publisher_name: 中文学术出版中心
 article_type: research-article
 lang: zh

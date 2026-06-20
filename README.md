@@ -1,6 +1,6 @@
 # Word2JATS
 
-Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统直接解析 DOCX 真实文档流，将标题、作者、摘要、章节、图表、公式、参考文献和正文交叉引用转换为结构化 JSON 与接近 JATS Publishing 1.4 的 XML，并提供正式 DTD 校验、质量评分、人工校正和 ZIP 交付。
+Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统直接解析 DOCX 真实文档流，将标题、作者、摘要、章节、图表、公式、参考文献和正文交叉引用转换为结构化 JSON 与接近 JATS Publishing 1.3 的 XML，并提供正式 DTD 校验、质量评分、人工校正和 ZIP 交付。
 
 ## 核心能力
 
@@ -11,22 +11,30 @@ Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统直�
 | OMML 转 MathML/LaTeX 与稳定降级 | 已支持 |
 | 图、表、公式、参考文献交叉引用恢复 | 已支持 |
 | 参考文献细粒度解析与 `element-citation` | 已支持 |
-| JATS Publishing 1.4 MathML3 DTD 校验 | 已支持 |
+| JATS Publishing 1.3 MathML3 DTD 校验 | 已支持 |
+| 官方样例 XML 结构对比 | 已支持 |
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
 
+## 官方基线与 JATS 1.3 对齐
+
+竞赛官方 baseline 提供了 Word 内容抽取、JATS XML 模板生成和 JATS 到 PDF 的参考实现。本项目保留 Python + FastAPI + Vue 的既有架构，并将 XML 交付格式对齐到官方 JATS Publishing 1.3：输出包含 MathML3 DTD 的 `DOCTYPE`、`dtd-version="1.3"`、`xmlns:xlink`、`graphic/@xlink:href`、`journal-meta`、`article-meta`、`body` 和 `back/ref-list` 等核心结构。仓库内置官方 JATS Publishing 1.3 MathML3 DTD，同时保留 1.4 DTD 作为兼容校验资源；校验器会根据 XML 的 `dtd-version` 自动选择匹配的本地 DTD。
+
 ## 演示与测试文档
 
-仓库提供两篇前端演示文档：
+前端一键演示默认使用竞赛官方样例目录中的 5 篇第一组 Word 主稿，并将系统生成 XML 与同目录官方 XML 结果进行结构对比：
 
 ```text
-sample_documents/word2jats_final_acceptance.docx
-sample_documents/真实参考论文.docx
+样例-最新版/样例1/第一组/初始word.docx      -> 最终上线.xml
+样例-最新版/样例2/第一组/初始文件.docx      -> 最终上线.xml
+样例-最新版/样例3/第一组/初始文件.docx      -> 最终文件.xml
+样例-最新版/样例4/第一组/初始文件.docx      -> 最终文件.xml
+样例-最新版/样例5/第一组/初始文件.docx      -> 最终文件.xml
 ```
 
-`word2jats_final_acceptance.docx` 是系统全流程验收稿，覆盖元数据、多级章节、列表、中英文图题和表题、图片、Word 表格、正文交叉引用、普通与扩展 OMML、可控 `partial` 降级、参考文献和人工校正场景。`真实参考论文.docx` 用于观察真实论文排版下的规则识别效果。
+前端点击“一键加载官方样例”后，会通过 `/api/demo-documents` 获取官方样例清单，下载唯一展示名的 DOCX，并调用现有批量转换流程。每个转换结果会返回 `official_comparison`，展示结构相似度、关键 JATS 标签数量和差异提示。旧接口 `/api/demo-document` 继续保留，用于兼容单篇演示稿调用方。
 
-前端点击“一键加载两篇演示数据”后，会通过 `/api/demo-documents` 获取两篇文档，并调用现有批量转换流程。旧接口 `/api/demo-document` 继续保留，用于兼容仅加载全流程验收稿的调用方。
+`sample_documents/` 目录仅保留为自动化回归测试材料，不再作为前端默认一键演示数据。
 
 重新生成：
 
@@ -42,6 +50,8 @@ python scripts/generate_sample_docx.py
 ```bash
 docker compose up --build
 ```
+
+Docker 前端 Nginx 已设置 `client_max_body_size 100m`，可支持 5 篇官方样例一次性批量上传。
 
 访问：
 
@@ -84,7 +94,7 @@ npm run build
 
 ## 使用流程
 
-1. 选择期刊 Profile，上传 DOCX 或一键加载两篇演示文档。
+1. 选择期刊 Profile，上传 DOCX 或一键加载官方样例。
 2. 查看结构化 JSON、JATS XML、校验结果和质量报告。
 3. 在“文档流对照”查看原文节点到 JATS 标签的映射。
 4. 在“图表预览”核对图片、表格、题注、引用和 JATS 片段。
@@ -95,7 +105,7 @@ npm run build
 ## 决赛展示流程
 
 1. 执行 `docker compose up --build` 并访问 `http://localhost:8080`。
-2. 点击“一键加载两篇演示数据”，对比全流程验收稿与真实参考论文的转换结果。
+2. 点击“一键加载官方样例”，批量转换 5 篇官方 Word 主稿并查看“官方对比”Tab。
 3. 展示文档流对照、图表预览、OMML 转换和正文交叉引用恢复。
 4. 展示质量总分、分项得分、问题定位和修复建议。
 5. 在人工校正页补充出版元数据，重新生成 XML 并展示 Schema 状态变化。

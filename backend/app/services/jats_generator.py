@@ -8,8 +8,15 @@ from app.services.profile_loader import ProfileLoader
 
 
 class JatsGenerator:
-    NSMAP = {"mml": "http://www.w3.org/1998/Math/MathML"}
+    MML_NS = "http://www.w3.org/1998/Math/MathML"
+    XLINK_NS = "http://www.w3.org/1999/xlink"
+    NSMAP = {"mml": MML_NS, "xlink": XLINK_NS}
     XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+    XLINK_HREF = f"{{{XLINK_NS}}}href"
+    DOCTYPE = (
+        '<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD '
+        'with MathML3 v1.3 20210610//EN" "JATS-journalpublishing1-3-mathml3.dtd">'
+    )
     TABLE_LABEL_RE = re.compile(
         r"^\s*(表\s*\d+(?:\s*[-－—.]\s*\d+)*|table\s*\d+(?:\s*[-.]\s*\d+)*)",
         re.I,
@@ -23,7 +30,7 @@ class JatsGenerator:
         article = ProfileLoader.apply_metadata(article, self.profile)
         root = etree.Element("article", nsmap=self.NSMAP)
         root.set("article-type", article.get("article_type") or "research-article")
-        root.set("dtd-version", "1.4")
+        root.set("dtd-version", "1.3")
         root.set(self.XML_LANG, article.get("lang") or "zh")
         front = etree.SubElement(root, "front")
         journal_meta = etree.SubElement(front, "journal-meta")
@@ -48,7 +55,7 @@ class JatsGenerator:
             caption = etree.SubElement(fig, "caption")
             etree.SubElement(caption, "p").text = figure.get("caption", "")
             if figure.get("path"):
-                etree.SubElement(fig, "graphic", href=figure["path"])
+                etree.SubElement(fig, "graphic", attrib={self.XLINK_HREF: figure["path"]})
         for index, table_data in enumerate(article.get("tables", []), start=1):
             parent = self._parent_for(table_data, section_elements, fallback)
             table_wrap = etree.SubElement(
@@ -60,19 +67,19 @@ class JatsGenerator:
             etree.SubElement(table_wrap, "label").text = label_text
             caption = etree.SubElement(table_wrap, "caption")
             etree.SubElement(caption, "p").text = caption_text
-            table = etree.SubElement(table_wrap, "table")
             rows = table_data.get("rows", [])
             if rows:
+                table = etree.SubElement(table_wrap, "table")
                 thead = etree.SubElement(table, "thead")
                 header_row = etree.SubElement(thead, "tr")
                 for cell in rows[0]:
                     etree.SubElement(header_row, "th").text = str(cell)
-            if len(rows) > 1:
-                tbody = etree.SubElement(table, "tbody")
-                for row in rows[1:]:
-                    row_element = etree.SubElement(tbody, "tr")
-                    for cell in row:
-                        etree.SubElement(row_element, "td").text = str(cell)
+                if len(rows) > 1:
+                    tbody = etree.SubElement(table, "tbody")
+                    for row in rows[1:]:
+                        row_element = etree.SubElement(tbody, "tr")
+                        for cell in row:
+                            etree.SubElement(row_element, "td").text = str(cell)
         for list_data in article["lists"]:
             parent = self._parent_for(list_data, section_elements, fallback)
             list_element = etree.SubElement(parent, "list", id=list_data["id"])
@@ -98,20 +105,25 @@ class JatsGenerator:
             etree.SubElement(alternatives, "tex-math").text = etree.CDATA(content)
 
         back = etree.SubElement(root, "back")
-        ref_list = etree.SubElement(back, "ref-list")
-        etree.SubElement(ref_list, "title").text = "References"
-        for index, reference in enumerate(article["references"], start=1):
-            ref = etree.SubElement(ref_list, "ref", id=reference.get("id") or f"ref{index}")
-            etree.SubElement(ref, "label").text = reference.get("label") or f"[{index}]"
-            if self._has_structured_reference(reference):
-                self._build_element_citation(ref, reference)
-            else:
-                etree.SubElement(ref, "mixed-citation").text = (
-                    reference.get("mixed_citation") or reference.get("raw", "")
-                )
+        if article["references"]:
+            ref_list = etree.SubElement(back, "ref-list")
+            etree.SubElement(ref_list, "title").text = "References"
+            for index, reference in enumerate(article["references"], start=1):
+                ref = etree.SubElement(ref_list, "ref", id=reference.get("id") or f"ref{index}")
+                etree.SubElement(ref, "label").text = reference.get("label") or f"[{index}]"
+                if self._has_structured_reference(reference):
+                    self._build_element_citation(ref, reference)
+                else:
+                    etree.SubElement(ref, "mixed-citation").text = (
+                        reference.get("mixed_citation") or reference.get("raw", "")
+                    )
         return etree.tostring(
-            root, encoding="unicode", pretty_print=True, xml_declaration=False
-        ).join(("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n", ""))
+            root,
+            encoding="UTF-8",
+            pretty_print=True,
+            xml_declaration=True,
+            doctype=self.DOCTYPE,
+        ).decode("utf-8")
 
     @staticmethod
     def _build_journal_meta(meta: Any, article: dict[str, Any]) -> None:
@@ -121,7 +133,7 @@ class JatsGenerator:
         etree.SubElement(title_group, "journal-title").text = article.get("journal_title", "")
         if article.get("issn"):
             etree.SubElement(
-                meta, "issn", attrib={"publication-format": "electronic"}
+                meta, "issn", attrib={"pub-type": "epub"}
             ).text = article["issn"]
         publisher = etree.SubElement(meta, "publisher")
         etree.SubElement(publisher, "publisher-name").text = article.get("publisher_name", "")
@@ -135,30 +147,31 @@ class JatsGenerator:
             etree.SubElement(subject_group, "subject").text = article["subject"]
         title_group = etree.SubElement(meta, "title-group")
         etree.SubElement(title_group, "article-title").text = article["title"]
-        contrib_group = etree.SubElement(meta, "contrib-group")
-        for author in article["authors"]:
-            contrib = etree.SubElement(contrib_group, "contrib", attrib={"contrib-type": "author"})
-            if author.get("orcid"):
-                etree.SubElement(
-                    contrib, "contrib-id", attrib={"contrib-id-type": "orcid"}
-                ).text = author["orcid"]
-            name = etree.SubElement(contrib, "name")
-            surname, given_names = self._split_name(author["name"])
-            etree.SubElement(name, "surname").text = surname
-            etree.SubElement(name, "given-names").text = given_names
-            affiliation_ids = author.get("affiliation_ids") or [
-                f"aff{index}" for index in range(1, len(article["affiliations"]) + 1)
-            ]
-            for affiliation_id in affiliation_ids:
-                etree.SubElement(
-                    contrib,
-                    "xref",
-                    attrib={"ref-type": "aff", "rid": affiliation_id},
-                )
+        if article["authors"]:
+            contrib_group = etree.SubElement(meta, "contrib-group")
+            for author in article["authors"]:
+                contrib = etree.SubElement(contrib_group, "contrib", attrib={"contrib-type": "author"})
+                if author.get("orcid"):
+                    etree.SubElement(
+                        contrib, "contrib-id", attrib={"contrib-id-type": "orcid"}
+                    ).text = author["orcid"]
+                name = etree.SubElement(contrib, "name")
+                surname, given_names = self._split_name(author["name"])
+                etree.SubElement(name, "surname").text = surname
+                etree.SubElement(name, "given-names").text = given_names
+                affiliation_ids = author.get("affiliation_ids") or [
+                    f"aff{index}" for index in range(1, len(article["affiliations"]) + 1)
+                ]
+                for affiliation_id in affiliation_ids:
+                    etree.SubElement(
+                        contrib,
+                        "xref",
+                        attrib={"ref-type": "aff", "rid": affiliation_id},
+                    )
         for index, affiliation in enumerate(article["affiliations"], start=1):
             etree.SubElement(meta, "aff", id=f"aff{index}").text = affiliation
         if any(article.get(field) for field in ("pub_year", "pub_month", "pub_day")):
-            pub_date = etree.SubElement(meta, "pub-date", attrib={"pub-type": "epub"})
+            pub_date = etree.SubElement(meta, "pub-date", attrib={"publication-format": "electronic"})
             if article.get("pub_day"):
                 etree.SubElement(pub_date, "day").text = article["pub_day"]
             if article.get("pub_month"):
@@ -167,9 +180,10 @@ class JatsGenerator:
                 etree.SubElement(pub_date, "year").text = article["pub_year"]
         abstract = etree.SubElement(meta, "abstract")
         etree.SubElement(abstract, "p").text = article["abstract"]
-        keywords = etree.SubElement(meta, "kwd-group")
-        for keyword in article["keywords"]:
-            etree.SubElement(keywords, "kwd").text = keyword
+        if article["keywords"]:
+            keywords = etree.SubElement(meta, "kwd-group")
+            for keyword in article["keywords"]:
+                etree.SubElement(keywords, "kwd").text = keyword
 
     @staticmethod
     def _split_name(name: str) -> tuple[str, str]:

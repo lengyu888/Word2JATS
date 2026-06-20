@@ -230,9 +230,11 @@ def test_generator_builds_jats_publishing_metadata_and_affiliation_links():
 
     xml = JatsGenerator().generate(article)
 
+    assert '<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD with MathML3 v1.3 20210610//EN" "JATS-journalpublishing1-3-mathml3.dtd">' in xml
     assert 'article-type="research-article"' in xml
-    assert 'dtd-version="1.4"' in xml
+    assert 'dtd-version="1.3"' in xml
     assert 'xml:lang="zh"' in xml
+    assert 'xmlns:xlink="http://www.w3.org/1999/xlink"' in xml
     assert "<journal-meta>" in xml
     assert '<journal-id journal-id-type="publisher-id">W2J</journal-id>' in xml
     assert "<journal-title>智能出版研究</journal-title>" in xml
@@ -243,7 +245,7 @@ def test_generator_builds_jats_publishing_metadata_and_affiliation_links():
     assert '<xref ref-type="aff" rid="aff2"/>' in xml
     assert '<aff id="aff1">未来出版大学</aff>' in xml
     assert '<aff id="aff2">智能出版研究院</aff>' in xml
-    assert '<pub-date pub-type="epub">' in xml
+    assert '<pub-date publication-format="electronic">' in xml
     assert "<year>2026</year>" in xml
 
 
@@ -258,7 +260,49 @@ def test_generator_emits_issn_for_formal_schema_delivery():
 
     xml = JatsGenerator().generate(article)
 
-    assert '<issn publication-format="electronic">1234-5678</issn>' in xml
+    assert '<issn pub-type="epub">1234-5678</issn>' in xml
+
+
+def test_generator_emits_jats_13_xlink_graphics():
+    article = {
+        "title": "Figure test", "abstract": "Abstract", "keywords": ["a", "b", "c"],
+        "sections": [{"title": "Intro", "paragraphs": ["Text"]}],
+        "authors": [], "affiliations": [], "figures": [
+            {"id": "fig1", "caption": "Fig. 1", "path": "media/figure.png", "section_index": 0}
+        ],
+        "tables": [], "lists": [], "formulas": [], "references": [], "issn": "1234-5678",
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert '<graphic xlink:href="media/figure.png"/>' in xml
+    assert ' href="media/figure.png"' not in xml
+
+
+def test_generator_omits_empty_jats_groups_for_schema_validity():
+    article = {
+        "title": "Minimal",
+        "abstract": "Abstract",
+        "keywords": [],
+        "sections": [{"title": "Intro", "paragraphs": ["Text"]}],
+        "authors": [],
+        "affiliations": [],
+        "figures": [],
+        "tables": [],
+        "lists": [],
+        "formulas": [],
+        "references": [],
+        "journal_id": "W2J",
+        "journal_title": "Word2JATS Demo Journal",
+        "publisher_name": "Word2JATS Publishing Lab",
+        "issn": "1234-5678",
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert "<contrib-group" not in xml
+    assert "<kwd-group" not in xml
+    assert "<ref-list" not in xml
 
 
 def test_generator_assigns_stable_section_ids_for_flow_mapping():
@@ -541,6 +585,39 @@ def test_generator_builds_jats_table_wrap():
     assert "<td>95%</td>" in xml
 
 
+def test_generator_omits_empty_table_element_for_caption_only_table():
+    article = {
+        "title": "Table caption only",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "Abstract",
+        "keywords": ["table", "JATS", "test"],
+        "sections": [{"title": "Results", "level": 1, "paragraphs": ["Text"]}],
+        "figures": [],
+        "tables": [
+            {
+                "id": "tab1",
+                "caption": "Table 1 Caption only",
+                "rows": [],
+                "section_index": 0,
+            }
+        ],
+        "lists": [],
+        "formulas": [],
+        "references": [],
+        "journal_id": "W2J",
+        "journal_title": "Word2JATS Demo Journal",
+        "publisher_name": "Word2JATS Publishing Lab",
+        "issn": "1234-5678",
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert '<table-wrap id="tab1">' in xml
+    assert "<p>Table 1 Caption only</p>" in xml
+    assert "<table/>" not in xml
+
+
 def test_validator_reports_required_content():
     article = {
         "title": "",
@@ -558,11 +635,10 @@ def test_validator_reports_required_content():
     result = ArticleValidator().validate(article, "<article />")
 
     assert result["passed"] is False
-    assert len(result["errors"]) == 10
+    assert len(result["errors"]) == 9
     assert "缺少 JATS journal-meta 节点。" in result["errors"]
     assert "缺少 JATS article-meta 节点。" in result["errors"]
     assert "缺少 JATS title-group 节点。" in result["errors"]
-    assert "缺少 JATS contrib-group 节点。" in result["errors"]
     assert "缺少 JATS body 节点。" in result["errors"]
     assert "缺少 JATS back 节点。" in result["errors"]
     assert "作者为空，建议补充作者信息。" in result["warnings"]
@@ -647,5 +723,4 @@ def test_validator_reports_missing_jats_publishing_structure():
     assert result["errors"] == [
         "缺少 JATS journal-meta 节点。",
         "缺少 JATS title-group 节点。",
-        "缺少 JATS contrib-group 节点。",
     ]

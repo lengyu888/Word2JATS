@@ -36,7 +36,7 @@ class ProfileLoader:
     def apply_metadata(article: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
         result = deepcopy(article)
         for field in (
-            "journal_title", "journal_id", "publisher_name", "article_type", "lang", "subject"
+            "journal_title", "journal_id", "issn", "publisher_name", "article_type", "lang", "subject"
         ):
             if not result.get(field) and profile.get(field):
                 result[field] = profile[field]

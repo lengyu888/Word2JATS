@@ -10,6 +10,7 @@ import BatchResults from './components/BatchResults.vue'
 import QualityReport from './components/QualityReport.vue'
 import FlowMappingViewer from './components/FlowMappingViewer.vue'
 import FigureTablePreview from './components/FigureTablePreview.vue'
+import OfficialComparison from './components/OfficialComparison.vue'
 import { batchConvertDocuments, exportPackage, generateXml, getDemoDocuments, getProfiles } from './api/convert'
 
 const loading = ref(false)
@@ -50,7 +51,7 @@ async function loadDemo(profile = 'default') {
   try {
     const files = await getDemoDocuments()
     await convert(files, profile)
-    ElMessage.success(`${files.length} 篇演示稿已加载并完成批量转换`)
+    ElMessage.success(`${files.length} 篇官方样例已加载并完成批量转换`)
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '演示数据加载失败')
   } finally {
@@ -145,7 +146,7 @@ async function regenerate(article) {
       <section class="capability-grid">
         <article v-for="(card, index) in [
           ['01', 'Word 文档流解析', '按 document.xml 真实顺序恢复段落、图片、表格与公式。'],
-          ['02', 'JATS Schema 校验', '使用本地正式 JATS Publishing 1.4 DTD 定位交付问题。'],
+          ['02', 'JATS Schema 校验', '使用本地正式 JATS Publishing 1.3 DTD 定位交付问题。'],
           ['03', 'OMML → MathML', '保留原生公式并生成 MathML、LaTeX 与文本回退。'],
           ['04', '图表公式引用恢复', '将正文引用转换为可校验的 JATS xref。'],
           ['05', '批量转换与 ZIP 交付', '逐篇质量评分并交付 XML、JSON、报告和媒体资源。'],
@@ -197,6 +198,9 @@ async function regenerate(article) {
             />
           </el-tab-pane>
           <el-tab-pane label="JATS XML" name="xml"><XmlViewer :xml="result.xml" /></el-tab-pane>
+          <el-tab-pane label="官方对比" name="official">
+            <OfficialComparison :comparison="result.official_comparison || {}" />
+          </el-tab-pane>
           <el-tab-pane label="校验结果" name="validation"><ValidationPanel :validation="result.validation" /></el-tab-pane>
           <el-tab-pane label="质量报告" name="quality">
             <QualityReport :report="result.quality_report" :formulas="result.article.formulas || []" />

@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
 from io import BytesIO
 import json
+from pathlib import Path
+import pytest
 import zipfile
 
 from app.main import app
@@ -30,10 +32,13 @@ def test_demo_documents_endpoint_lists_and_downloads_both_demo_files():
     assert response.status_code == 200
     documents = response.json()["documents"]
     assert [item["filename"] for item in documents] == [
-        "word2jats_final_acceptance.docx",
-        "真实参考论文.docx",
+        "official-sample-1-group-1.docx",
+        "official-sample-2-group-1.docx",
+        "official-sample-3-group-1.docx",
+        "official-sample-4-group-1.docx",
+        "official-sample-5-group-1.docx",
     ]
-    assert "%E7%9C%9F%E5%AE%9E%E5%8F%82%E8%80%83%E8%AE%BA%E6%96%87.docx" in documents[1]["download_url"]
+    assert documents[0]["official_xml"].endswith(".xml")
 
     for document in documents:
         download = client.get(document["download_url"])
@@ -45,6 +50,33 @@ def test_demo_documents_endpoint_rejects_files_outside_allowlist():
     response = client.get("/api/demo-documents/../README.md")
 
     assert response.status_code in {404, 405}
+
+
+def test_official_demo_conversion_returns_comparison_report():
+    listing = client.get("/api/demo-documents")
+    if listing.status_code == 404:
+        pytest.skip("official samples are not available in this workspace")
+    document = listing.json()["documents"][0]
+    download = client.get(document["download_url"])
+
+    response = client.post(
+        "/api/convert",
+        files={
+            "file": (
+                document["filename"],
+                download.content,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    comparison = response.json()["official_comparison"]
+    assert comparison["available"] is True
+    assert comparison["official_xml"] == document["official_xml"]
+    assert 0 <= comparison["similarity_score"] <= 100
+    assert "sec" in comparison["counts"]["generated"]
+    assert isinstance(comparison["differences"], list)
 
 
 def test_profiles_endpoint_and_convert_profile_parameter():
@@ -79,8 +111,10 @@ def test_convert_endpoint_returns_all_outputs():
     assert payload["success"] is True
     assert payload["article"]["title"] == "面向出版的智能结构化转换"
     assert payload["xml"].startswith("<?xml")
+    assert 'dtd-version="1.3"' in payload["xml"]
     assert payload["validation"]["passed"] is True
-    assert payload["validation"]["auto_fix"]["attempted"] is True
+    assert payload["validation"]["jats_schema_valid"] is True
+    assert payload["validation"]["auto_fix"]["attempted"] is False
     assert isinstance(payload["validation"]["auto_fix"]["applied_fixes"], list)
     assert 0 <= payload["quality_report"]["total_score"] <= 100
     assert "metadata_score" in payload["quality_report"]["scores"]

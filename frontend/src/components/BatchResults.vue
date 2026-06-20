@@ -30,6 +30,7 @@ defineEmits(['select', 'download-xml', 'download-package'])
         </div>
         <div class="counts">
           <span>质量分 <b>{{ item.quality_report?.total_score ?? '-' }}</b></span>
+          <span>官方相似度 <b>{{ item.official_comparison?.available ? `${item.official_comparison.similarity_score}%` : '-' }}</b></span>
           <span>警告 <b>{{ item.validation?.warnings?.length || 0 }}</b></span>
           <span>错误 <b>{{ item.validation?.errors?.length || 0 }}</b></span>
           <span>导出 <b>{{ exportStatuses[item.filename] || '待导出' }}</b></span>

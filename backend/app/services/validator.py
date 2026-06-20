@@ -127,7 +127,6 @@ class ArticleValidator:
             ("journal-meta", "缺少 JATS journal-meta 节点。"),
             ("article-meta", "缺少 JATS article-meta 节点。"),
             ("title-group", "缺少 JATS title-group 节点。"),
-            ("contrib-group", "缺少 JATS contrib-group 节点。"),
             ("body", "缺少 JATS body 节点。"),
             ("back", "缺少 JATS back 节点。"),
         )

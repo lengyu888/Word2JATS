@@ -11,7 +11,8 @@ FastAPI 后端负责上传、DOCX 文档流解析、Article JSON 构建、JATS X
 | OMML 转 MathML/LaTeX 与稳定降级 | 已支持 |
 | 图、表、公式、参考文献交叉引用恢复 | 已支持 |
 | 参考文献细粒度解析与 `element-citation` | 已支持 |
-| JATS Publishing 1.4 MathML3 DTD 校验 | 已支持 |
+| JATS Publishing 1.3 MathML3 DTD 校验 | 已支持 |
+| 官方样例 XML 结构对比 | 已支持 |
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
 
@@ -39,25 +40,32 @@ python -m uvicorn app.main:app --reload --port 8000
 - 安全媒体预览：`GET /api/media/{conversion_id}/{filename}`
 - ZIP 导出：`POST /api/export-package`
 
+Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `/api/batch-convert` 一次性提交 5 篇官方样例。
+
 ## 处理流程
 
 1. `DocumentFlowParser` 直接解析 `word/document.xml` 和关系文件，按真实顺序生成段落、图片、表格和公式节点。
 2. `DocxParser` 识别元数据、章节、图表、列表、公式、参考文献并绑定章节。
 3. `OmmlConverter` 输出 MathML、LaTeX、转换状态、支持特性和复核问题。
 4. `XrefResolver` 恢复图、表、公式和参考文献正文引用。
-5. `JatsGenerator` 生成接近 JATS Publishing 1.4 的 XML。
+5. `JatsGenerator` 生成接近 JATS Publishing 1.3 的 XML，并输出官方 MathML3 DTD `DOCTYPE`、`dtd-version="1.3"` 和 `xlink` 命名空间。
 6. `JatsSchemaValidator` 与 `JatsAutoFixer` 执行本地正式 Schema 校验和最多两轮确定性修复。
 7. `ArticleValidator`、`QualityScorer` 汇总业务规则、引用完整性、质量分和修复建议。
 8. `FlowViewBuilder`、`VisualPreviewBuilder` 为前端生成文档流映射和图表预览数据。
 
-## 演示与测试文档
+## 官方样例演示与对比
 
 ```text
-sample_documents/word2jats_final_acceptance.docx
-sample_documents/真实参考论文.docx
+样例-最新版/样例1/第一组/初始word.docx      -> 最终上线.xml
+样例-最新版/样例2/第一组/初始文件.docx      -> 最终上线.xml
+样例-最新版/样例3/第一组/初始文件.docx      -> 最终文件.xml
+样例-最新版/样例4/第一组/初始文件.docx      -> 最终文件.xml
+样例-最新版/样例5/第一组/初始文件.docx      -> 最终文件.xml
 ```
 
-`word2jats_final_acceptance.docx` 用于稳定的全流程回归测试，覆盖完整成功路径和一个可控的复杂 OMML `partial` 路径；`真实参考论文.docx` 用于观察真实论文排版下的规则解析效果。前端一键演示会同时加载两篇文档并调用 `/api/batch-convert`。
+`/api/demo-documents` 默认返回上述 5 篇官方样例，并为重复的 `初始文件.docx` 生成唯一展示名。`/api/convert` 和 `/api/batch-convert` 对这些展示名会自动匹配同目录官方 XML，返回 `official_comparison`，包含结构相似度、关键标签数量和差异提示。
+
+`sample_documents/` 目录仅用于自动化回归测试和本地开发验证，不再作为前端默认一键演示数据。
 
 全流程验收稿可重新生成：
 
@@ -65,7 +73,7 @@ sample_documents/真实参考论文.docx
 python scripts/generate_sample_docx.py
 ```
 
-后端集成测试会验证全流程验收稿的结构数量、MathML 状态、JATS 标签、文档流映射、图表预览，以及人工补齐出版元数据后的正式 Schema 通过状态。真实参考论文不会被生成脚本覆盖。
+后端集成测试会验证回归文档的结构数量、MathML 状态、JATS 标签、文档流映射、图表预览，以及人工补齐出版元数据后的正式 Schema 通过状态。
 
 ## OMML 能力矩阵
 
@@ -81,7 +89,7 @@ python scripts/generate_sample_docx.py
 
 ## 正式 JATS Schema
 
-仓库内置 JATS Publishing 1.4 MathML3 DTD，系统也支持通过 `JATS_SCHEMA_PATH` 指向本地 RNG、XSD 或 DTD。校验结果区分：
+仓库内置官方 JATS Publishing 1.3 MathML3 DTD，并保留 JATS Publishing 1.4 MathML3 DTD 作为兼容资源。系统也支持通过 `JATS_SCHEMA_PATH` 指向本地 RNG、XSD 或 DTD；未配置环境变量时，校验器会根据 XML 的 `dtd-version` 自动选择匹配的本地 Schema。校验结果区分：
 
 - `xml_well_formed`
 - `jats_schema_valid`
@@ -99,7 +107,7 @@ python -m pytest -q
 python evaluate.py
 ```
 
-`evaluate.py` 在系统临时目录按需生成 30 篇分层合成 Word，评测完成后自动删除。仓库保留 Golden JSON、manifest、评测报告和两篇演示文档，不长期保存 30 篇评测 DOCX。
+`evaluate.py` 在系统临时目录按需生成 30 篇分层合成 Word，评测完成后自动删除。仓库保留 Golden JSON、manifest、评测报告、官方样例映射说明和本地回归文档，不长期保存 30 篇评测 DOCX。
 
 指标包括标题、摘要、关键词、章节、图表绑定、公式、参考文献、交叉引用、XML 合法率、原始 Schema 通过率、人工校正后 Schema 通过率和平均耗时。
 

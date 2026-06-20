@@ -11,7 +11,8 @@ Vue 3 前端提供 DOCX 上传、批量转换、结构化审阅、人工校正�
 | OMML 转 MathML/LaTeX 与稳定降级 | 已支持 |
 | 图、表、公式、参考文献交叉引用恢复 | 已支持 |
 | 参考文献细粒度解析与 `element-citation` | 已支持 |
-| JATS Publishing 1.4 MathML3 DTD 校验 | 已支持 |
+| JATS Publishing 1.3 MathML3 DTD 校验 | 已支持 |
+| 官方样例 XML 结构对比 | 已支持 |
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
 
@@ -34,12 +35,12 @@ npm run dev
 npm run build
 ```
 
-也可在项目根目录执行 `docker compose up --build`，访问 `http://localhost:8080`。
+也可在项目根目录执行 `docker compose up --build`，访问 `http://localhost:8080`。Docker 版 Nginx 已设置 `client_max_body_size 100m`，支持一次性上传 5 篇官方样例。
 
 ## 页面能力
 
 - Profile 选择、单篇或多篇 DOCX 上传
-- 一键加载全流程验收稿与真实参考论文
+- 一键加载官方样例，并展示与官方 XML 结果的结构对比
 - 批量状态、质量分、错误数、警告数和导出状态
 - 结构化 JSON 与 JATS XML 预览
 - XML 复制、单篇下载和完整 ZIP 下载
@@ -49,31 +50,36 @@ npm run build
 - OMML `success/partial/failed`、支持特性、问题、MathML 和 LaTeX 展示
 - 文档流节点到 JATS 标签、路径、章节和目标 ID 的对照
 - 图片缩略图、大图、表格前 10 行、题注、引用次数和 JATS 片段预览
+- 生成 XML 与官方 XML 的关键 JATS 标签数量对比
 
-## 演示数据
+## 官方样例演示
 
-“一键加载两篇演示数据”通过 `/api/demo-documents` 获取白名单清单并同时加载：
+“一键加载官方样例”通过 `/api/demo-documents` 获取白名单清单并同时加载 5 篇官方第一组 Word 主稿：
 
 ```text
-sample_documents/word2jats_final_acceptance.docx
-sample_documents/真实参考论文.docx
+official-sample-1-group-1.docx
+official-sample-2-group-1.docx
+official-sample-3-group-1.docx
+official-sample-4-group-1.docx
+official-sample-5-group-1.docx
 ```
 
-全流程验收稿覆盖系统主要成功路径，并包含一个可控的复杂公式 `partial` 状态；真实参考论文用于展示真实排版下的识别效果。两篇文档会进入现有批量转换列表，可逐篇查看、校正和导出。
+这些展示名映射到 `样例-最新版` 目录下的官方 Word 文件。转换完成后，系统会在“官方对比”Tab 中展示生成 XML 与官方 XML 的结构相似度、关键 JATS 标签数量和差异提示。
 
 ## 使用流程
 
-1. 选择 Profile 并上传 DOCX，或一键加载两篇演示数据。
+1. 选择 Profile 并上传 DOCX，或一键加载官方样例。
 2. 从批量列表选择文章，查看 JSON、XML、校验和质量报告。
 3. 使用“文档流对照”解释 DOCX 到 JATS 的映射。
 4. 使用“图表预览”核对媒体、表格、题注、引用和 XML 片段。
-5. 在“人工校正”补充或修正结构化字段，点击“重新生成 XML”。
-6. 查看重新执行后的正式 Schema、业务规则、交叉引用和质量分。
-7. 下载 XML 或 ZIP 交付包。
+5. 使用“官方对比”查看系统 XML 与官方 XML 结果的关键结构差异。
+6. 在“人工校正”补充或修正结构化字段，点击“重新生成 XML”。
+7. 查看重新执行后的正式 Schema、业务规则、交叉引用和质量分。
+8. 下载 XML 或 ZIP 交付包。
 
 ## 决赛展示流程
 
-1. 一键加载两篇演示稿，对比全流程验收稿和真实参考论文。
+1. 一键加载官方样例，对比系统生成 XML 和官方 XML 结果。
 2. 展示能力卡片与批量转换状态。
 3. 展示文档流、图表、OMML、xref 和质量报告。
 4. 人工补充出版元数据并重新生成。

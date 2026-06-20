@@ -74,7 +74,7 @@ function convert() {
         开始批量转换
       </el-button>
       <el-button size="large" :loading="props.loading" @click="$emit('demo', selectedProfile)">
-        一键加载两篇演示数据
+        一键加载官方样例
       </el-button>
     </div>
   </section>

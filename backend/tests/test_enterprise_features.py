@@ -52,6 +52,26 @@ def test_schema_validator_uses_local_rng(tmp_path: Path):
     assert invalid["schema_errors"]
 
 
+def test_schema_validator_selects_schema_matching_dtd_version(tmp_path: Path):
+    schema_13 = tmp_path / "JATS-Publishing-1-3-MathML3-DTD"
+    schema_14 = tmp_path / "JATS-Publishing-1-4-MathML3-DTD"
+    schema_13.mkdir()
+    schema_14.mkdir()
+    (schema_13 / "JATS-journalpublishing1-3-mathml3.dtd").write_text(
+        "<!ELEMENT article EMPTY>\n<!ATTLIST article dtd-version CDATA #IMPLIED>",
+        encoding="utf-8",
+    )
+    (schema_14 / "JATS-journalpublishing1-4-mathml3.dtd").write_text(
+        "<!ELEMENT article (body)>\n<!ELEMENT body EMPTY>\n<!ATTLIST article dtd-version CDATA #IMPLIED>",
+        encoding="utf-8",
+    )
+
+    result = JatsSchemaValidator(tmp_path).validate('<article dtd-version="1.4"><body/></article>')
+
+    assert result["schema_file"] == "JATS-journalpublishing1-4-mathml3.dtd"
+    assert result["jats_schema_valid"] is True
+
+
 def test_validator_reports_unconfigured_schema_without_false_pass():
     validator = ArticleValidator(JatsSchemaValidator(Path("missing-schema-directory")))
     article = {
@@ -117,17 +137,19 @@ def test_auto_fixer_reduces_official_dtd_graphic_errors():
     article = {
         "title": "Schema fix", "abstract": "Abstract", "keywords": ["a", "b", "c"],
         "sections": [{"title": "Intro", "paragraphs": ["Text"]}],
-        "authors": [], "affiliations": [], "tables": [], "formulas": [], "lists": [],
+        "authors": [{"name": "Alice Smith", "orcid": "0000-0000-0000-0001"}],
+        "affiliations": ["Demo Lab"], "tables": [], "formulas": [], "lists": [],
         "references": [], "journal_id": "DEMO", "journal_title": "Demo Journal",
-        "publisher_name": "Demo Publisher",
+        "publisher_name": "Demo Publisher", "issn": "1234-5678",
         "figures": [{"id": "fig1", "caption": "Figure 1", "path": "media/figure.png"}],
     }
     validator = JatsSchemaValidator()
-    xml = JatsGenerator().generate(article)
+    xml = JatsGenerator().generate(article).replace("xlink:href", "href")
     initial = validator.validate(xml)
 
     fixed_xml, report, final = JatsAutoFixer(validator).fix(xml, initial)
 
     assert len(final["schema_errors"]) < len(initial["schema_errors"])
+    assert final["jats_schema_valid"] is True
     assert 'xlink:href="media/figure.png"' in fixed_xml
     assert any(item["code"] == "GRAPHIC_XLINK_HREF" for item in report["applied_fixes"])

@@ -1,30 +1,35 @@
-# Local JATS Publishing 1.4 schema
+# Local JATS Publishing Schemas
 
-This directory intentionally does not bundle the large official JATS distribution.
+This workspace bundles local JATS DTD files so formal validation can run offline.
 
-Download the official JATS Publishing 1.4 RNG, XSD, or DTD package, keep all of its
-relative include/module files together, and place it under this directory. The
-validator scans recursively and prefers RNG, then XSD, then DTD.
+## Default Competition Schema
 
-If the distribution contains multiple schema modules, set `JATS_SCHEMA_PATH` to
-the absolute path of its main schema file before starting FastAPI.
+The default delivery target is JATS Publishing 1.3 with MathML3. The official DTD package is extracted to:
 
-Without a local official schema, API responses report `jats_schema_valid: null` and
-an explanatory `schema_errors` entry. They never claim formal JATS conformance.
+```text
+backend/schemas/JATS-Publishing-1-3-MathML3-DTD/
+```
 
-## Installed schema in this workspace
+Main DTD:
 
-The official `JATS-Publishing-1-4-MathML3-DTD.zip` package has been extracted to:
+```text
+JATS-journalpublishing1-3-mathml3.dtd
+```
+
+Generated XML uses:
+
+```xml
+<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD with MathML3 v1.3 20210610//EN" "JATS-journalpublishing1-3-mathml3.dtd">
+```
+
+## Compatibility Schema
+
+The previous JATS Publishing 1.4 MathML3 DTD is retained for compatibility:
 
 ```text
 backend/schemas/JATS-Publishing-1-4-MathML3-DTD/
 ```
 
-The validator automatically discovers the main file:
+`JatsSchemaValidator` chooses the matching local DTD from the XML `dtd-version` attribute. You may still override discovery with `JATS_SCHEMA_PATH` when testing another local RNG, XSD, or DTD.
 
-```text
-JATS-journalpublishing1-4-mathml3.dtd
-```
-
-Keep every `.dtd`, `.ent`, `.mod`, and supporting subdirectory together because
-the main DTD loads them through relative paths.
+Keep every `.dtd`, `.ent`, `.mod`, and supporting subdirectory together because the main DTD loads modules through relative paths.
