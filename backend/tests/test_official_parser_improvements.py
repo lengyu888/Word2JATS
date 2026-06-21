@@ -199,8 +199,36 @@ def test_image_after_table_caption_becomes_table_graphic(tmp_path):
 
     assert article["figures"] == []
     assert article["tables"][0]["path"].endswith(".png")
+    assert article["tables"][0]["status"] == "ok"
+    assert article["tables"][0]["confidence"] >= 0.80
+    assert "位于同一章节" in article["tables"][0]["evidence"]
     assert '<table-wrap id="tab1">' in xml
     assert '<graphic xlink:href="' in xml
+
+
+def test_unbound_image_is_preserved_for_review(tmp_path):
+    image_path = tmp_path / "unbound.png"
+    image_path.write_bytes(make_png((80, 40, 20)))
+    path = tmp_path / "unbound-image.docx"
+    document = Document()
+    title = document.add_paragraph("Unbound Figure")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: JATS; XML; figures")
+    document.add_paragraph("1. Results")
+    document.add_picture(str(image_path), width=Inches(1))
+    document.add_paragraph("References")
+    document.add_paragraph("[1] Example reference.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+    figure = article["figures"][0]
+
+    assert figure["status"] == "need_review"
+    assert figure["confidence"] < 0.80
+    assert figure["issues"][0]["level"] == "warning"
+    assert "图题" in figure["issues"][0]["message"]
 
 
 def test_generator_nests_sections_by_level():

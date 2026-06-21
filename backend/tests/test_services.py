@@ -496,7 +496,13 @@ def test_parser_extracts_tables_and_binds_supported_captions(tmp_path):
 
     article = DocxParser(path, tmp_path / "media").parse()
 
-    assert article["tables"] == [
+    assert [
+        {
+            key: table[key]
+            for key in ("id", "caption", "rows", "section_index")
+        }
+        for table in article["tables"]
+    ] == [
         {
             "id": "tab1",
             "caption": "表1 实验结果",
@@ -510,6 +516,8 @@ def test_parser_extracts_tables_and_binds_supported_captions(tmp_path):
             "section_index": 0,
         },
     ]
+    assert all(table["status"] == "ok" for table in article["tables"])
+    assert all(table["confidence"] >= 0.80 for table in article["tables"])
 
 
 def test_parser_extracts_table_from_document_without_non_empty_paragraphs(tmp_path):

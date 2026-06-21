@@ -6,6 +6,7 @@ from typing import Any
 from app.services.document_flow_parser import DocumentFlowParser
 from app.services.profile_loader import ProfileLoader
 from app.services.reference_parser import ReferenceParser
+from app.services.structure_evidence import StructureEvidence
 
 
 class DocxParser:
@@ -53,6 +54,7 @@ class DocxParser:
         self.media_dir = Path(media_dir)
         self.profile = profile or {}
         self.reference_parser = ReferenceParser()
+        self.structure_evidence = StructureEvidence()
         self.abstract_re = self._marker_regex(
             self.profile.get("abstract_markers"), self.ABSTRACT_RE
         )
@@ -86,6 +88,7 @@ class DocxParser:
                 for index in front_indexes
             }
         self._parse_flow_content(flow, article, skipped)
+        self._annotate_structure_evidence(article)
         return ProfileLoader.apply_metadata(article, self.profile)
 
     def _parse_flow_content(
@@ -123,7 +126,9 @@ class DocxParser:
                         node.get("media_path", ""), table_index + 1
                     )
                     article["tables"][table_index].update(
-                        path=path, section_index=current_section_index
+                        path=path,
+                        section_index=current_section_index,
+                        _media_flow_index=node["flow_index"],
                     )
                     continue
                 pending_index = self._pop_in_section(
@@ -139,7 +144,9 @@ class DocxParser:
                 )
                 if pending_index is not None:
                     article["figures"][pending_index].update(
-                        path=path, section_index=current_section_index
+                        path=path,
+                        section_index=current_section_index,
+                        _media_flow_index=node["flow_index"],
                     )
                 else:
                     article["figures"].append({
@@ -147,6 +154,7 @@ class DocxParser:
                         "caption": "",
                         "path": path,
                         "section_index": current_section_index,
+                        "_media_flow_index": node["flow_index"],
                     })
                     unbound_figures.append(len(article["figures"]) - 1)
                 continue
@@ -158,7 +166,9 @@ class DocxParser:
                 )
                 if pending_index is not None:
                     article["tables"][pending_index].update(
-                        rows=node.get("rows", []), section_index=current_section_index
+                        rows=node.get("rows", []),
+                        section_index=current_section_index,
+                        _media_flow_index=node["flow_index"],
                     )
                 else:
                     article["tables"].append({
@@ -166,6 +176,7 @@ class DocxParser:
                         "caption": "",
                         "rows": node.get("rows", []),
                         "section_index": current_section_index,
+                        "_media_flow_index": node["flow_index"],
                     })
                     unbound_tables.append(len(article["tables"]) - 1)
                 continue
@@ -260,6 +271,12 @@ class DocxParser:
                         if article["figures"][index].get("path")
                     ]
                     article["figures"][unbound_index]["paths"] = paths
+                    article["figures"][unbound_index]["_media_flow_index"] = min(
+                        article["figures"][index].get(
+                            "_media_flow_index", node["flow_index"]
+                        )
+                        for index in matching_figures
+                    )
                     for index in reversed(matching_figures[1:]):
                         article["figures"].pop(index)
                     unbound_figures[:] = [
@@ -272,12 +289,16 @@ class DocxParser:
                     )
                 if unbound_index is not None:
                     article["figures"][unbound_index]["caption"] = text
+                    article["figures"][unbound_index]["_caption_flow_index"] = node[
+                        "flow_index"
+                    ]
                 else:
                     article["figures"].append({
                         "id": f"fig{len(article['figures']) + 1}",
                         "caption": text,
                         "path": "",
                         "section_index": current_section_index,
+                        "_caption_flow_index": node["flow_index"],
                     })
                     pending_figures.append(len(article["figures"]) - 1)
                 continue
@@ -288,12 +309,16 @@ class DocxParser:
                 )
                 if unbound_index is not None:
                     article["tables"][unbound_index]["caption"] = text
+                    article["tables"][unbound_index]["_caption_flow_index"] = node[
+                        "flow_index"
+                    ]
                 else:
                     article["tables"].append({
                         "id": f"tab{len(article['tables']) + 1}",
                         "caption": text,
                         "rows": [],
                         "section_index": current_section_index,
+                        "_caption_flow_index": node["flow_index"],
                     })
                     pending_tables.append(len(article["tables"]) - 1)
                 continue
@@ -344,6 +369,60 @@ class DocxParser:
                 current_section["paragraphs"].append(text)
 
         article["abstract"] = "\n".join(abstract_parts)
+
+    def _annotate_structure_evidence(self, article: dict[str, Any]) -> None:
+        for object_type, collection in (
+            ("figure", article["figures"]),
+            ("table", article["tables"]),
+        ):
+            for item in collection:
+                caption = item.get("caption", "").strip()
+                has_content = bool(
+                    item.get("path")
+                    or item.get("paths")
+                    or (object_type == "table" and item.get("rows"))
+                )
+                if caption and has_content:
+                    media_index = item.get("_media_flow_index")
+                    caption_index = item.get("_caption_flow_index")
+                    distance = (
+                        abs(media_index - caption_index)
+                        if media_index is not None and caption_index is not None
+                        else None
+                    )
+                    result = self.structure_evidence.score_binding(
+                        object_type=object_type,
+                        same_section=True,
+                        distance=distance,
+                        number_match=self._caption_number_matches(item, caption),
+                        explicit_caption=True,
+                    )
+                elif caption:
+                    noun = "图片" if object_type == "figure" else "表格"
+                    result = self.structure_evidence.review_result(
+                        f"{noun}标题未绑定{noun}内容，需要人工复核。",
+                        f"请确认标题对应的{noun}并在人工校正页完成绑定。",
+                    )
+                else:
+                    noun = "图片" if object_type == "figure" else "表格"
+                    caption_name = "图题" if object_type == "figure" else "表题"
+                    result = self.structure_evidence.review_result(
+                        f"{noun}缺少{caption_name}，需要人工复核。",
+                        f"请补充{caption_name}后重新生成 XML。",
+                    )
+                item.update(result)
+                item.pop("_media_flow_index", None)
+                item.pop("_caption_flow_index", None)
+
+    @staticmethod
+    def _caption_number_matches(item: dict[str, Any], caption: str) -> bool:
+        item_number = re.search(r"\d+$", str(item.get("id", "")))
+        caption_number = re.search(r"\d+", caption)
+        return bool(
+            item_number
+            and caption_number
+            and item_number.group() == caption_number.group()
+        )
 
     @staticmethod
     def _empty_article() -> dict[str, Any]:
