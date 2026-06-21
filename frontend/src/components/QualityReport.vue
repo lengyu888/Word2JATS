@@ -37,6 +37,28 @@ const formulaTag = (status) => ({ success: 'success', partial: 'warning', failed
         <el-progress :percentage="row.value" :show-text="false" :stroke-width="7" />
       </div>
     </section>
+    <section class="evidence-grid">
+      <article>
+        <span>STRUCTURE EVIDENCE</span>
+        <h3>结构识别证据</h3>
+        <div class="evidence-stats">
+          <el-tag type="success">通过 {{ report.structure_evidence?.ok || 0 }}</el-tag>
+          <el-tag type="warning">需复核 {{ report.structure_evidence?.need_review || 0 }}</el-tag>
+          <el-tag type="danger">异常 {{ (report.structure_evidence?.warning || 0) + (report.structure_evidence?.error || 0) }}</el-tag>
+        </div>
+        <p>平均置信度：{{ report.structure_evidence?.average_confidence ?? '-' }}</p>
+      </article>
+      <article>
+        <span>XREF TARGETS</span>
+        <h3>交叉引用目标</h3>
+        <div class="evidence-stats">
+          <el-tag type="success">通过 {{ report.xref_summary?.passed || 0 }}</el-tag>
+          <el-tag type="warning">需复核 {{ report.xref_summary?.need_review || 0 }}</el-tag>
+          <el-tag type="danger">缺失 {{ report.xref_summary?.missing || 0 }}</el-tag>
+        </div>
+        <p>仅对实际存在的 JATS ID 生成 xref，缺失目标保留为原文。</p>
+      </article>
+    </section>
     <section class="formula-overview">
       <div class="section-title"><span>FORMULA CONVERSION</span><h3>OMML 转换状态</h3></div>
       <div class="formula-stats">
@@ -84,8 +106,9 @@ const formulaTag = (status) => ({ success: 'success', partial: 'warning', failed
 .eyebrow, .section-title span { color: #e4a936; font-size: 10px; font-weight: 800; letter-spacing: .18em; }h2 { margin: 9px 0; font: 30px Georgia, "Noto Serif SC", serif; }.score-hero p { max-width: 620px; margin: 0; color: #c7d1cc; line-height: 1.8; font-size: 13px; }
 .summary { display: grid; grid-template-columns: auto auto; gap: 5px 12px; }.summary b { color: #e4a936; font: 24px Georgia, serif; }.summary span { align-self: center; font-size: 11px; }
 .score-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }.score-item { padding: 16px; border: 1px solid #ded9cd; background: #fffef9; }.score-item div { display: flex; justify-content: space-between; margin-bottom: 12px; }.score-item span { color: #64716c; font-size: 12px; }.score-item b { font: 22px Georgia, serif; }
+.evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0; }.evidence-grid article { padding: 18px; border: 1px solid #ded9cd; background: #fffef9; }.evidence-grid article > span { color: #e4a936; font-size: 10px; font-weight: 800; letter-spacing: .15em; }.evidence-grid h3 { margin: 7px 0 14px; font: 20px Georgia, "Noto Serif SC", serif; }.evidence-grid p { margin: 12px 0 0; color: #64716c; font-size: 11px; }.evidence-stats { display: flex; flex-wrap: wrap; gap: 8px; }
 .formula-overview, .issues { margin-top: 18px; padding: 20px; border: 1px solid #ded9cd; background: #fffef9; }.section-title h3 { margin: 7px 0 18px; font: 23px Georgia, "Noto Serif SC", serif; }
 .formula-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }.formula-stats div { display: grid; padding: 12px; background: #f4f1e8; text-align: center; }.formula-stats b { color: #006d77; font: 25px Georgia, serif; }.formula-stats span { margin-top: 4px; color: #73807b; font-size: 10px; }.unsupported { padding: 9px 12px; color: #9a671c; background: #fbf2df; font-size: 11px; }
 .formula-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }.formula-list article { min-width: 0; padding: 13px; border: 1px solid #e3ded2; }.formula-list header { display: flex; justify-content: space-between; }.formula-list p { margin: 8px 0; color: #64716c; font-size: 11px; }.formula-list details { margin-top: 7px; }.formula-list summary { cursor: pointer; color: #006d77; font-size: 11px; }.formula-list pre { max-height: 150px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/1.6 Consolas, monospace; }
-@media (max-width: 900px) { .score-hero { grid-template-columns: 1fr; }.score-grid, .formula-stats, .formula-list { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .score-hero { grid-template-columns: 1fr; }.score-grid, .formula-stats, .formula-list, .evidence-grid { grid-template-columns: 1fr 1fr; } }
 </style>

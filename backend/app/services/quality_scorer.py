@@ -38,6 +38,8 @@ class QualityScorer:
                 "need_review_count": sum(item["level"] == "need_review" for item in issues),
             },
             "formula_summary": self._formula_summary(article),
+            "structure_evidence": self._structure_evidence_summary(article),
+            "xref_summary": self._xref_summary(validation),
         }
 
     def _metadata(self, article: dict[str, Any], issues: list[dict[str, str]]) -> int:
@@ -145,6 +147,41 @@ class QualityScorer:
             "mathml_success": mathml_count,
             **statuses,
             "unsupported_features": sorted(unsupported),
+        }
+
+    @staticmethod
+    def _structure_evidence_summary(article: dict[str, Any]) -> dict[str, Any]:
+        items = [
+            item
+            for collection in ("figures", "tables", "formulas")
+            for item in article.get(collection, [])
+        ]
+        counts = {"ok": 0, "need_review": 0, "warning": 0, "error": 0}
+        confidence = []
+        for item in items:
+            status = item.get("status", "ok")
+            counts[status if status in counts else "need_review"] += 1
+            if item.get("confidence") is not None:
+                confidence.append(float(item["confidence"]))
+        return {
+            "total": len(items),
+            **counts,
+            "average_confidence": round(
+                sum(confidence) / len(confidence), 2
+            ) if confidence else None,
+        }
+
+    @staticmethod
+    def _xref_summary(validation: dict[str, Any]) -> dict[str, int]:
+        checks = validation.get("xref_checks", [])
+        warnings = validation.get("warnings", [])
+        return {
+            "passed": sum("检查通过" in item for item in checks),
+            "need_review": sum(
+                "人工复核" in item or "need_review" in item.casefold()
+                for item in checks
+            ),
+            "missing": sum("目标不存在" in item for item in warnings),
         }
 
     def _references(self, article: dict[str, Any], issues: list[dict[str, str]]) -> int:
