@@ -127,3 +127,24 @@ def test_multi_target_rid_is_equivalent_to_split_xrefs(tmp_path):
     result = OfficialXmlComparator().compare(generated, official)
 
     assert result["dimensions"]["xrefs"]["score"] == 100
+
+
+def test_float_dimension_reports_count_caption_and_section_metrics(tmp_path):
+    generated = """
+    <article><front><article-meta><title-group><article-title>A</article-title></title-group>
+    <abstract><p>B</p></abstract></article-meta></front><body><sec><title>Results</title>
+    <fig id="fig1"><caption><p>Figure 1 Architecture</p></caption></fig>
+    <table-wrap id="tab1"><caption><p>Table 1 Results</p></caption><table/></table-wrap>
+    </sec></body><back/></article>
+    """
+    official = write_official(tmp_path, generated)
+
+    metrics = OfficialXmlComparator().compare(generated, official)["dimensions"][
+        "figures_tables"
+    ]["metrics"]
+
+    assert {
+        "figure_count", "figure_caption", "figure_section",
+        "table_count", "table_caption", "table_section",
+    } <= metrics.keys()
+    assert all(metrics[name] == 100 for name in metrics)

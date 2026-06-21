@@ -31,6 +31,17 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def acceptance_passed(
+    summary: dict[str, Any], *, average_floor: float, minimum_floor: int,
+    schema_floor: float
+) -> bool:
+    return bool(
+        summary.get("average_similarity", 0) >= average_floor
+        and summary.get("minimum_similarity", 0) >= minimum_floor
+        and summary.get("schema_valid_rate", 0) >= schema_floor
+    )
+
+
 class OfficialSampleEvaluator:
     """Run the production conversion pipeline against local official pairs."""
 

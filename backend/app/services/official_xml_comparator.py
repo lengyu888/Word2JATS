@@ -266,11 +266,31 @@ class OfficialXmlComparator:
             ),
         }
         figure_table_metrics = {
-            "figures": self._object_score(generated["figures"], official["figures"], "caption"),
-            "tables": self._object_score(generated["tables"], official["tables"], "caption"),
+            "figure_count": self._count_score(generated["figures"], official["figures"]),
+            "figure_caption": self._paired_field_score(
+                generated["figures"], official["figures"], "caption"
+            ),
+            "figure_section": self._paired_field_score(
+                generated["figures"], official["figures"], "section"
+            ),
+            "table_count": self._count_score(generated["tables"], official["tables"]),
+            "table_caption": self._paired_field_score(
+                generated["tables"], official["tables"], "caption"
+            ),
+            "table_section": self._paired_field_score(
+                generated["tables"], official["tables"], "section"
+            ),
         }
         formula_metrics = {
-            "formulas": self._object_score(generated["formulas"], official["formulas"], "text"),
+            "formula_count": self._count_score(
+                generated["formulas"], official["formulas"]
+            ),
+            "formula_content": self._paired_field_score(
+                generated["formulas"], official["formulas"], "text"
+            ),
+            "formula_section": self._paired_field_score(
+                generated["formulas"], official["formulas"], "section"
+            ),
         }
         reference_metrics = {
             "references": self._reference_score(
@@ -351,6 +371,21 @@ class OfficialXmlComparator:
             "xrefs": len(facts["xrefs"]),
             "xml_well_formed": True,
         }
+        for prefix, key in (
+            ("figure", "figures"),
+            ("table", "tables"),
+            ("formula", "formulas"),
+        ):
+            mapping[f"{prefix}_count"] = len(facts[key])
+            mapping[f"{prefix}_caption"] = [
+                item.get("caption", "") for item in facts[key]
+            ]
+            mapping[f"{prefix}_content"] = [
+                item.get("text", "") for item in facts[key]
+            ]
+            mapping[f"{prefix}_section"] = [
+                item.get("section", "") for item in facts[key]
+            ]
         return mapping.get(metric, facts.get(metric))
 
     @classmethod
@@ -435,6 +470,29 @@ class OfficialXmlComparator:
             for index in range(matched)
         ) / matched
         return (count_score + text_score) / 2
+
+    @staticmethod
+    def _count_score(left: list[Any], right: list[Any]) -> float:
+        if not left and not right:
+            return 1.0
+        if not left or not right:
+            return 0.0
+        return min(len(left), len(right)) / max(len(left), len(right))
+
+    @classmethod
+    def _paired_field_score(
+        cls, left: list[dict[str, Any]], right: list[dict[str, Any]], field: str
+    ) -> float:
+        if not left and not right:
+            return 1.0
+        if not left or not right:
+            return 0.0
+        matched = min(len(left), len(right))
+        score = sum(
+            cls._text_score(left[index].get(field, ""), right[index].get(field, ""))
+            for index in range(matched)
+        )
+        return score / max(len(left), len(right))
 
     @classmethod
     def _xref_score(cls, left: list[dict[str, str]], right: list[dict[str, str]]) -> float:
@@ -588,4 +646,10 @@ class OfficialXmlComparator:
             "xrefs": "Expand compound references and verify every rid target.",
             "xml_well_formed": "Repair XML syntax before structural comparison.",
         }
+        if metric.startswith("figure_"):
+            return suggestions["figures"]
+        if metric.startswith("table_"):
+            return suggestions["tables"]
+        if metric.startswith("formula_"):
+            return suggestions["formulas"]
         return suggestions.get(metric, "Review the generated JATS structure.")
