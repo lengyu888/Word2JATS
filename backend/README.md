@@ -13,6 +13,8 @@ FastAPI 后端负责上传、DOCX 文档流解析、Article JSON 构建、JATS X
 | 参考文献细粒度解析与 `element-citation` | 已支持 |
 | JATS Publishing 1.3 MathML3 DTD 校验 | 已支持 |
 | 官方样例 XML 结构对比 | 已支持 |
+| 图表/公式结构证据、置信度与保守复核状态 | 已支持 |
+| xref 目标存在性过滤与缺失目标定位 | 已支持 |
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
 
@@ -47,7 +49,7 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 1. `DocumentFlowParser` 直接解析 `word/document.xml` 和关系文件，按真实顺序生成段落、图片、表格和公式节点。
 2. `DocxParser` 识别元数据、章节、图表、列表、公式、参考文献并绑定章节。
 3. `OmmlConverter` 输出 MathML、LaTeX、转换状态、支持特性和复核问题。
-4. `XrefResolver` 恢复图、表、公式和参考文献正文引用。
+4. `StructureEvidence` 对图表绑定与独立公式分类给出置信度、证据和复核状态；`XrefResolver` 仅对实际存在的图、表、公式和参考文献 ID 生成正文引用。
 5. `JatsGenerator` 生成接近 JATS Publishing 1.3 的 XML，并输出官方 MathML3 DTD `DOCTYPE`、`dtd-version="1.3"` 和 `xlink` 命名空间。
 6. `JatsSchemaValidator` 与 `JatsAutoFixer` 执行本地正式 Schema 校验和最多两轮确定性修复。
 7. `ArticleValidator`、`QualityScorer` 汇总业务规则、引用完整性、质量分和修复建议。
@@ -65,7 +67,7 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 
 `/api/demo-documents` 默认返回上述 5 篇官方样例，并为重复的 `初始文件.docx` 生成唯一展示名。`/api/convert` 和 `/api/batch-convert` 对这些展示名会自动匹配同目录官方 XML，返回 `official_comparison`。语义指标 V2 对元数据、章节、图表、公式、参考文献、交叉引用和 XML 合规性分别评分，不使用全局标签计数替代转换质量。
 
-当前五篇官方样例自动转换结果为：平均相似度 **91.4%**、最低单篇 **88%**、JATS 1.3 DTD 通过率 **100%**。运行以下命令可重新评测：
+当前五篇官方样例自动转换结果为：平均相似度 **91.6%**、最低单篇 **88%**、JATS 1.3 DTD 通过率 **100%**。比较器额外输出图表数量、题注、章节归属和公式数量、内容、章节归属等细分指标；命令默认执行 91.4/88/100% 防回归门槛。运行以下命令可重新评测：
 
 ```bash
 python evaluate_official_samples.py

@@ -84,7 +84,15 @@ def test_parser_extracts_core_article_structure(tmp_path):
     assert article["keywords"] == ["JATS", "Word", "结构化出版"]
     assert article["sections"][0]["title"] == "引言"
     assert article["lists"][0]["items"] == ["解析文档结构"]
-    assert article["formulas"][0] == {
+    formula = article["formulas"][0]
+    assert {
+        key: formula[key]
+        for key in (
+            "id", "content", "omml", "mathml", "latex", "type",
+            "conversion_status", "supported_features", "unsupported_features",
+            "issues", "section_index",
+        )
+    } == {
         "id": "eq1",
         "content": "E = mc²",
         "omml": "",
@@ -97,6 +105,9 @@ def test_parser_extracts_core_article_structure(tmp_path):
         "issues": [],
         "section_index": 0,
     }
+    assert formula["is_display"] is True
+    assert formula["status"] == "need_review"
+    assert formula["confidence"] >= 0.50
     assert article["references"][0]["id"] == "ref1"
     assert article["references"][0]["label"] == "[1]"
     assert article["references"][0]["raw"] == "张三. 智能出版研究[J]. 2026."
