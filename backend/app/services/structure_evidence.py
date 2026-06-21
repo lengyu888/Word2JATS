@@ -72,3 +72,40 @@ class StructureEvidence:
                 "suggestion": suggestion,
             }],
         }
+
+    def score_formula(
+        self,
+        *,
+        has_math_paragraph: bool,
+        pure_math: bool,
+        aligned: bool,
+        numbered: bool,
+    ) -> dict[str, Any]:
+        score = 0.0
+        evidence: list[str] = []
+        if has_math_paragraph:
+            score += 0.60
+            evidence.append("OMML 公式段")
+        if pure_math:
+            score += 0.55
+            evidence.append("段落仅包含公式")
+        if aligned and numbered:
+            score += 0.25
+            evidence.append("公式编号与段落对齐特征一致")
+
+        confidence = round(min(score, 1.0), 2)
+        is_display = bool(has_math_paragraph or pure_math or (aligned and numbered))
+        issues = []
+        if not is_display:
+            issues.append({
+                "level": "warning",
+                "message": "公式位于正文文本中，未提升为独立展示公式。",
+                "suggestion": "保留为正文内联公式；如需独立编号，请在人工校正页确认。",
+            })
+        return {
+            "is_display": is_display,
+            "confidence": confidence,
+            "status": self.status_for(confidence),
+            "evidence": evidence,
+            "issues": issues,
+        }

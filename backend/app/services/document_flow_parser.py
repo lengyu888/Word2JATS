@@ -125,6 +125,12 @@ class DocumentFlowParser:
                 "supported_features": converted["supported_features"],
                 "unsupported_features": converted["unsupported_features"],
                 "issues": converted["issues"],
+                "display_signals": {
+                    "has_math_paragraph": has_math_paragraph,
+                    "pure_math": not bool(non_math_text),
+                    "aligned": alignment in {"right", "center"},
+                    "numbered": has_equation_number,
+                },
             }]
         return [{**base, "type": self._classify_paragraph(paragraph, text, style)}]
 

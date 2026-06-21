@@ -362,6 +362,7 @@ class DocxParser:
                     "supported_features": node.get("supported_features", []),
                     "unsupported_features": node.get("unsupported_features", []),
                     "issues": node.get("issues", []),
+                    "_display_signals": node.get("display_signals", {}),
                     "section_index": current_section_index,
                 })
                 continue
@@ -413,6 +414,24 @@ class DocxParser:
                 item.update(result)
                 item.pop("_media_flow_index", None)
                 item.pop("_caption_flow_index", None)
+
+        for formula in article["formulas"]:
+            signals = formula.pop("_display_signals", {})
+            result = self.structure_evidence.score_formula(
+                has_math_paragraph=bool(signals.get("has_math_paragraph")),
+                pure_math=bool(signals.get("pure_math", True)),
+                aligned=bool(signals.get("aligned")),
+                numbered=bool(signals.get("numbered")),
+            )
+            conversion_status = formula.get("conversion_status", "success")
+            if conversion_status == "partial":
+                result["status"] = "need_review"
+                result["confidence"] = min(result["confidence"], 0.70)
+            elif conversion_status == "failed":
+                result["status"] = "warning"
+                result["confidence"] = min(result["confidence"], 0.40)
+            result["issues"] = [*formula.get("issues", []), *result["issues"]]
+            formula.update(result)
 
     @staticmethod
     def _caption_number_matches(item: dict[str, Any], caption: str) -> bool:

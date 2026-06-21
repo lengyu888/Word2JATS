@@ -62,6 +62,12 @@ def test_document_flow_parser_preserves_body_order_and_node_types(tmp_path):
     assert relevant[3]["rows"] == [["指标", "结果"], ["准确率", "95%"]]
     assert relevant[-1]["text"] == "x=1"
     assert relevant[-1]["formula_type"] == "omml"
+    assert relevant[-1]["display_signals"] == {
+        "has_math_paragraph": True,
+        "pure_math": True,
+        "aligned": False,
+        "numbered": False,
+    }
 
 
 def test_document_flow_parser_classifies_title_paragraph_and_list(tmp_path):
@@ -90,6 +96,9 @@ def test_docx_parser_assigns_flow_media_to_their_real_sections(tmp_path):
     assert article["tables"][0]["section_index"] == 0
     assert article["formulas"][0]["content"] == "x=1"
     assert article["formulas"][0]["section_index"] == 1
+    assert article["formulas"][0]["status"] == "ok"
+    assert article["formulas"][0]["confidence"] >= 0.80
+    assert "OMML 公式段" in article["formulas"][0]["evidence"]
 
 
 def test_docx_parser_does_not_bind_captions_across_section_boundaries(tmp_path):

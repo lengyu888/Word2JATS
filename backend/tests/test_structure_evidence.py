@@ -25,6 +25,34 @@ def test_cross_section_candidate_is_rejected():
     assert "跨章节" in result["issues"][0]["message"]
 
 
+def test_math_paragraph_is_high_confidence_display_formula():
+    result = StructureEvidence().score_formula(
+        has_math_paragraph=True,
+        pure_math=True,
+        aligned=False,
+        numbered=False,
+    )
+
+    assert result["is_display"] is True
+    assert result["confidence"] >= 0.80
+    assert result["status"] == "ok"
+    assert "OMML 公式段" in result["evidence"]
+
+
+def test_inline_math_is_not_promoted_to_display_formula():
+    result = StructureEvidence().score_formula(
+        has_math_paragraph=False,
+        pure_math=False,
+        aligned=False,
+        numbered=False,
+    )
+
+    assert result["is_display"] is False
+    assert result["confidence"] < 0.50
+    assert result["status"] == "warning"
+    assert result["issues"][0]["level"] == "warning"
+
+
 def test_number_and_section_evidence_produce_high_confidence():
     result = StructureEvidence().score_binding(
         object_type="table",
