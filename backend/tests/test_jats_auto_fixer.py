@@ -77,3 +77,42 @@ def test_auto_fixer_does_not_invent_missing_publishing_metadata():
     assert report["applied_fixes"] == []
     assert report["remaining_schema_errors"] == final["schema_errors"]
 
+
+class IdrefValidator:
+    def validate(self, xml: str) -> dict:
+        root = etree.fromstring(xml.encode("utf-8"))
+        ids = set(root.xpath("//@id"))
+        unknown = [
+            rid
+            for value in root.xpath("//*[local-name()='xref']/@rid")
+            for rid in value.split()
+            if rid not in ids
+        ]
+        return {
+            "xml_well_formed": True,
+            "jats_schema_valid": not unknown,
+            "schema_errors": [
+                f'DTD_UNKNOWN_ID: IDREFS attribute rid references an unknown ID "{rid}"'
+                for rid in unknown
+            ],
+            "schema_file": "test.dtd",
+        }
+
+
+def test_auto_fixer_removes_unknown_idrefs_but_preserves_text():
+    xml = """<article><body><sec id="sec1"><p>
+      Known <xref ref-type="bibr" rid="ref1 ref2">[1,2]</xref> and
+      <xref ref-type="bibr" rid="ref3">[3]</xref>.
+    </p></sec></body><back><ref-list><ref id="ref1"/></ref-list></back></article>"""
+    validator = IdrefValidator()
+
+    fixed_xml, report, final = JatsAutoFixer(validator).fix(
+        xml, validator.validate(xml)
+    )
+    root = etree.fromstring(fixed_xml.encode("utf-8"))
+
+    assert root.xpath("string(//xref/@rid)") == "ref1"
+    assert "[3]" in "".join(root.xpath("//body//text()"))
+    assert final["jats_schema_valid"] is True
+    assert {item["code"] for item in report["applied_fixes"]} == {"UNKNOWN_IDREF"}
+

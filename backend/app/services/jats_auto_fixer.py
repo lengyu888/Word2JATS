@@ -69,6 +69,8 @@ class JatsAutoFixer:
             fixes.extend(self._fix_journal_meta_order(root))
         if "id " in error_text and ("already defined" in error_text or "duplicate" in error_text):
             fixes.extend(self._fix_duplicate_ids(root))
+        if "unknown id" in error_text or "dtd_unknown_id" in error_text:
+            fixes.extend(self._fix_unknown_idrefs(root))
         return fixes
 
     def _fix_graphic_href(self, root: Any) -> list[dict[str, str]]:
@@ -128,6 +130,35 @@ class JatsAutoFixer:
                 "code": "DUPLICATE_ID",
                 "location": f"//*[@id='{current}']",
                 "message": f"已将重复 ID {current} 修复为 {replacement}。",
+            })
+        return fixes
+
+    @staticmethod
+    def _fix_unknown_idrefs(root: Any) -> list[dict[str, str]]:
+        fixes = []
+        known_ids = set(root.xpath("//@id"))
+        for index, xref in enumerate(root.xpath("//*[local-name()='xref'][@rid]"), start=1):
+            original = xref.get("rid", "")
+            valid = [rid for rid in original.split() if rid in known_ids]
+            if len(valid) == len(original.split()):
+                continue
+            if valid:
+                xref.set("rid", " ".join(valid))
+            else:
+                parent = xref.getparent()
+                position = parent.index(xref)
+                content = "".join(xref.itertext())
+                tail = xref.tail or ""
+                if position == 0:
+                    parent.text = (parent.text or "") + content + tail
+                else:
+                    previous = parent[position - 1]
+                    previous.tail = (previous.tail or "") + content + tail
+                parent.remove(xref)
+            fixes.append({
+                "code": "UNKNOWN_IDREF",
+                "location": f"xref[{index}]",
+                "message": f"Removed unresolved target(s) from xref/@rid: {original}.",
             })
         return fixes
 

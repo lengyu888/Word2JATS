@@ -63,7 +63,15 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 样例-最新版/样例5/第一组/初始文件.docx      -> 最终文件.xml
 ```
 
-`/api/demo-documents` 默认返回上述 5 篇官方样例，并为重复的 `初始文件.docx` 生成唯一展示名。`/api/convert` 和 `/api/batch-convert` 对这些展示名会自动匹配同目录官方 XML，返回 `official_comparison`，包含结构相似度、关键标签数量和差异提示。
+`/api/demo-documents` 默认返回上述 5 篇官方样例，并为重复的 `初始文件.docx` 生成唯一展示名。`/api/convert` 和 `/api/batch-convert` 对这些展示名会自动匹配同目录官方 XML，返回 `official_comparison`。语义指标 V2 对元数据、章节、图表、公式、参考文献、交叉引用和 XML 合规性分别评分，不使用全局标签计数替代转换质量。
+
+当前五篇官方样例自动转换结果为：平均相似度 **91.4%**、最低单篇 **88%**、JATS 1.3 DTD 通过率 **100%**。运行以下命令可重新评测：
+
+```bash
+python evaluate_official_samples.py
+```
+
+报告输出到 `docs/官方样例对比报告.md`，并将源文档可恢复问题与 DOI、期刊 ID 等出版方补录字段分开列示。
 
 `sample_documents/` 目录仅用于自动化回归测试和本地开发验证，不再作为前端默认一键演示数据。
 
@@ -98,13 +106,14 @@ python scripts/generate_sample_docx.py
 - `schema_errors`
 - `auto_fix`
 
-自动修复仅处理 `graphic/@xlink:href`、已知节点顺序和重复 ID 等确定性问题，不会编造 ISSN、DOI、ORCID。
+自动修复仅处理 `graphic/@xlink:href`、已知节点顺序、重复 ID 和无效 `xref/@rid` 等确定性问题；移除无效引用目标时会保留正文文字，不会编造 ISSN、DOI、ORCID。
 
 ## 测试与评测
 
 ```bash
 python -m pytest -q
 python evaluate.py
+python evaluate_official_samples.py
 ```
 
 `evaluate.py` 在系统临时目录按需生成 30 篇分层合成 Word，评测完成后自动删除。仓库保留 Golden JSON、manifest、评测报告、官方样例映射说明和本地回归文档，不长期保存 30 篇评测 DOCX。

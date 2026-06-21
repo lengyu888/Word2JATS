@@ -41,6 +41,30 @@ def test_xref_resolver_recognizes_supported_references():
     ]
 
 
+def test_resolve_plural_and_range_figure_table_formula_xrefs():
+    matches = XrefResolver().resolve(
+        "Figures 1-3 and Tables 2 and 4 summarize Eqs. (1)-(2)."
+    )
+
+    assert [(item["ref_type"], item["rid"]) for item in matches] == [
+        ("fig", "fig1 fig2 fig3"),
+        ("table", "tab2 tab4"),
+        ("disp-formula", "eq1 eq2"),
+    ]
+
+
+def test_resolve_en_dash_bibliography_range_and_word_number_table():
+    matches = XrefResolver().resolve(
+        "Prior studies [11\u201313] are summarized in Table one and table ten."
+    )
+
+    assert [(item["ref_type"], item["rid"]) for item in matches] == [
+        ("bibr", "ref11 ref12 ref13"),
+        ("table", "tab1"),
+        ("table", "tab10"),
+    ]
+
+
 def test_generator_builds_multiple_xrefs_with_text_and_tail():
     article = build_article("如图1和表 1所示，公式见Eq. (1)，相关研究见[1,2]。")
 

@@ -98,45 +98,85 @@ class DocumentFlowParser:
             ]
         math_nodes = paragraph.xpath(".//m:oMath", namespaces=self.NS)
         if math_nodes:
-            formulas = []
-            for math_node in math_nodes:
-                omml = etree.tostring(math_node, encoding="unicode")
-                converted = self.omml_converter.convert(omml)
-                formulas.append({
-                    **base,
-                    "text": self._text(math_node),
-                    "type": "formula",
-                    "formula_type": "omml",
-                    "omml": omml,
-                    "mathml": converted["mathml"],
-                    "latex": converted["latex"],
-                    "conversion_status": converted["conversion_status"],
-                    "supported_features": converted["supported_features"],
-                    "unsupported_features": converted["unsupported_features"],
-                    "issues": converted["issues"],
-                })
-            return formulas
+            has_math_paragraph = bool(
+                paragraph.xpath(".//m:oMathPara", namespaces=self.NS)
+            )
+            alignment = base["alignment"].casefold()
+            has_equation_number = bool(re.search(r"\(\s*\d+\s*\)\s*$", text))
+            non_math_text = "".join(paragraph.xpath(
+                ".//w:t[not(ancestor::m:oMath)]/text()", namespaces=self.NS
+            )).strip()
+            is_display = has_math_paragraph or not non_math_text or (
+                alignment in {"right", "center"} and has_equation_number
+            )
+            if not is_display:
+                return [{**base, "type": "paragraph", "contains_inline_math": True}]
+            math_node = math_nodes[0]
+            omml = etree.tostring(math_node, encoding="unicode")
+            converted = self.omml_converter.convert(omml)
+            return [{
+                **base,
+                "type": "formula",
+                "formula_type": "omml",
+                "omml": omml,
+                "mathml": converted["mathml"],
+                "latex": converted["latex"],
+                "conversion_status": converted["conversion_status"],
+                "supported_features": converted["supported_features"],
+                "unsupported_features": converted["unsupported_features"],
+                "issues": converted["issues"],
+            }]
         return [{**base, "type": self._classify_paragraph(paragraph, text, style)}]
 
     def _classify_paragraph(self, paragraph: Any, text: str, style: str) -> str:
         style_lower = style.lower()
-        if style_lower == "title":
+        if style_lower == "title" or ("title" in style_lower and "type" not in style_lower):
             return "title"
         if self.FIGURE_RE.match(text):
             return "figure_caption"
         if self.TABLE_RE.match(text):
             return "table_caption"
-        if self.SECTION_RE.match(text) or style_lower.startswith("heading"):
+        if (
+            self.SECTION_RE.match(text)
+            or style_lower.startswith("heading")
+            or (style.isdigit() and 1 <= int(style) <= 6)
+            or self._looks_like_unnumbered_heading(text, base_bold=bool(
+                paragraph.xpath(".//w:rPr/w:b", namespaces=self.NS)
+            ))
+        ):
             return "heading"
         if paragraph.xpath(".//w:pPr/w:numPr", namespaces=self.NS) or self.LIST_RE.match(text):
             return "list"
         if (
             "equation" in style_lower
             or "公式" in style
-            or (len(text) <= 60 and bool(self.FORMULA_RE.search(text)))
+            or self._looks_like_plain_formula(text)
         ):
             return "formula"
         return "paragraph"
+
+    @classmethod
+    def _looks_like_plain_formula(cls, text: str) -> bool:
+        if len(text) > 100 or not cls.FORMULA_RE.search(text):
+            return False
+        if re.search(r"[=≈≤≥∑∫√＋−×÷^]", text):
+            return True
+        if re.search(r"\\?(?:frac|sqrt)\s*[({]", text, re.I):
+            return True
+        return bool(re.search(r"\b(?:lim|log|sin|cos)\s*[_({]", text, re.I))
+
+    @staticmethod
+    def _looks_like_unnumbered_heading(text: str, base_bold: bool) -> bool:
+        words = text.split()
+        compact_length = max(1, len(re.sub(r"\s+", "", text)))
+        digit_ratio = sum(char.isdigit() for char in text) / compact_length
+        return bool(
+            base_bold
+            and 1 <= len(words) <= 12
+            and len(text) <= 100
+            and digit_ratio < 0.08
+            and not text.rstrip().endswith((".", ";", ":", "。", "；", "："))
+        )
 
     def _parse_table(self, table: Any) -> list[list[str]]:
         return [

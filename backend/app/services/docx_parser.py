@@ -9,14 +9,31 @@ from app.services.reference_parser import ReferenceParser
 
 
 class DocxParser:
+    PRE_BODY_HEADINGS = {"abbreviations", "abbreviations and acronyms"}
+    CONVENTIONAL_SUBHEADINGS = {
+        "limitations", "strengths and limitations",
+        "limitations and future directions", "future directions",
+    }
+    PUBLISHER_BACK_HEADINGS = {
+        "funding", "funding information", "conflict of interest",
+        "conflicts of interest", "competing interests", "author contributions",
+        "authors' contributions", "ethics approval", "ethical approval",
+        "data availability", "data availability statement", "acknowledgments",
+        "acknowledgements", "informed consent statement",
+        "institutional review board statement",
+    }
+    MULTI_PANEL_RE = re.compile(
+        r"(?:\([A-Za-z]\s*[-\u2013]\s*[A-Za-z]\)|\bpanels?\b|\bplots?\b)", re.I
+    )
     SECTION_PATTERNS = (
         re.compile(r"^(\d+(?:\.\d+)*)[\s、.]+(.+)$"),
         re.compile(r"^([一二三四五六七八九十]+)、\s*(.+)$"),
         re.compile(r"^[（(]([一二三四五六七八九十]+)[）)]\s*(.+)$"),
     )
     AFFILIATION_WORDS = (
-        "大学", "学院", "研究院", "实验室", "中心",
+        "大学", "学院", "研究院", "实验室", "中心", "医院", "系", "部",
         "school", "university", "institute", "laboratory", "center",
+        "department", "faculty", "hospital", "college", "academy",
     )
     ABSTRACT_RE = re.compile(r"^\s*(摘要|摘\s*要|abstract)\s*[:：]?\s*", re.I)
     KEYWORD_RE = re.compile(r"^\s*(关键词|关\s*键\s*词|key\s*words?|keywords)\s*[:：]?\s*", re.I)
@@ -61,12 +78,12 @@ class DocxParser:
         if paragraphs:
             title_index = self._find_title_index(paragraphs)
             article["title"] = paragraphs[title_index]["text"].strip()
-            author_indexes, affiliation_indexes = self._extract_front_matter(
+            _, _, front_indexes = self._extract_front_matter(
                 paragraphs, title_index, article
             )
             skipped = {
                 paragraphs[index]["flow_index"]
-                for index in {title_index, *author_indexes, *affiliation_indexes}
+                for index in front_indexes
             }
         self._parse_flow_content(flow, article, skipped)
         return ProfileLoader.apply_metadata(article, self.profile)
@@ -79,6 +96,8 @@ class DocxParser:
         abstract_parts: list[str] = []
         in_abstract = False
         in_references = False
+        in_publisher_back_matter = False
+        awaiting_keywords = False
         unbound_figures: list[int] = []
         pending_figures: list[int] = []
         unbound_tables: list[int] = []
@@ -96,6 +115,17 @@ class DocxParser:
 
             if node_type == "image":
                 in_abstract = False
+                table_index = self._pop_in_section(
+                    pending_tables, article["tables"], current_section_index
+                )
+                if table_index is not None:
+                    path = self._save_flow_image(
+                        node.get("media_path", ""), table_index + 1
+                    )
+                    article["tables"][table_index].update(
+                        path=path, section_index=current_section_index
+                    )
+                    continue
                 pending_index = self._pop_in_section(
                     pending_figures, article["figures"], current_section_index
                 )
@@ -142,20 +172,59 @@ class DocxParser:
 
             if self.REFERENCE_RE.match(text):
                 in_references = True
+                in_publisher_back_matter = False
                 in_abstract = False
+                awaiting_keywords = False
                 continue
             if in_references:
                 if text:
-                    article["references"].append(
-                        self._parse_reference(text, len(article["references"]) + 1)
+                    label_match = self.reference_parser.LABEL_RE.match(text)
+                    numbered_mode = bool(
+                        article["references"] and article["references"][0].get("label")
                     )
+                    if (
+                        not label_match
+                        and numbered_mode
+                        and self._looks_like_unlabeled_reference(text)
+                    ):
+                        synthetic_label = f"[{len(article['references']) + 1}]"
+                        article["references"].append(
+                            self._parse_reference(
+                                f"{synthetic_label} {text}",
+                                len(article["references"]) + 1,
+                            )
+                        )
+                    elif (
+                        not label_match
+                        and numbered_mode
+                        and self._looks_like_reference_continuation(text)
+                    ):
+                        previous = article["references"][-1]
+                        combined = " ".join(
+                            part for part in (previous.get("raw", ""), text) if part
+                        )
+                        article["references"][-1] = self._parse_reference(
+                            f"{previous.get('label', '')} {combined}",
+                            len(article["references"]),
+                        )
+                    else:
+                        article["references"].append(
+                            self._parse_reference(text, len(article["references"]) + 1)
+                        )
+                continue
+
+            if self._is_publisher_back_heading(text) and current_section is not None:
+                in_abstract = False
+                in_publisher_back_matter = True
+                continue
+            if in_publisher_back_matter:
                 continue
 
             if self.keyword_re.match(text):
                 in_abstract = False
-                article["keywords"] = self._split_values(
-                    self.keyword_re.sub("", text, count=1)
-                )
+                keyword_text = self.keyword_re.sub("", text, count=1)
+                article["keywords"] = self._split_values(keyword_text)
+                awaiting_keywords = not bool(article["keywords"])
                 continue
             if self.abstract_re.match(text):
                 in_abstract = True
@@ -164,11 +233,43 @@ class DocxParser:
                     abstract_parts.append(abstract_text)
                 continue
 
+            if awaiting_keywords and text:
+                article["keywords"] = self._split_values(text)
+                awaiting_keywords = False
+                continue
+
+            if (
+                current_section is None
+                and self._normalized_heading(text) in self.PRE_BODY_HEADINGS
+            ):
+                in_abstract = False
+                continue
+
             if node_type == "figure_caption":
                 in_abstract = False
-                unbound_index = self._pop_in_section(
-                    unbound_figures, article["figures"], current_section_index
-                )
+                matching_figures = [
+                    index for index in unbound_figures
+                    if article["figures"][index].get("section_index", -1)
+                    == current_section_index
+                ]
+                if len(matching_figures) > 1 and self.MULTI_PANEL_RE.search(text):
+                    unbound_index = matching_figures[0]
+                    paths = [
+                        article["figures"][index].get("path", "")
+                        for index in matching_figures
+                        if article["figures"][index].get("path")
+                    ]
+                    article["figures"][unbound_index]["paths"] = paths
+                    for index in reversed(matching_figures[1:]):
+                        article["figures"].pop(index)
+                    unbound_figures[:] = [
+                        index for index in unbound_figures
+                        if index not in matching_figures
+                    ]
+                else:
+                    unbound_index = self._pop_in_section(
+                        unbound_figures, article["figures"], current_section_index
+                    )
                 if unbound_index is not None:
                     article["figures"][unbound_index]["caption"] = text
                 else:
@@ -197,9 +298,13 @@ class DocxParser:
                     pending_tables.append(len(article["tables"]) - 1)
                 continue
 
-            section = self._parse_section_title(text)
+            section = self._parse_section_title(text, node)
             if section:
                 in_abstract = False
+                if text.lstrip().startswith(("●", "•")) and current_section:
+                    section["level"] = min(
+                        6, int(current_section.get("level", 1)) + 1
+                    )
                 article["sections"].append(section)
                 current_section = section
                 current_section_index = len(article["sections"]) - 1
@@ -263,8 +368,13 @@ class DocxParser:
                 score += min(paragraph["font_size"] / 4, 5)
             if paragraph.get("type") == "title":
                 score += 5
-            if str(paragraph.get("style", "")).casefold() in self.title_styles:
+            style = str(paragraph.get("style", "")).casefold()
+            if style in self.title_styles:
                 score += 5
+            if "title" in style and "type" not in style:
+                score += 10
+            if any(marker in text.casefold() for marker in ("correspondence", "orcid")):
+                score -= 10
             if 4 <= len(text) <= 45:
                 score += 2
             if self.abstract_re.match(text) or self.keyword_re.match(text):
@@ -275,39 +385,105 @@ class DocxParser:
 
     def _extract_front_matter(
         self, paragraphs: list[dict[str, Any]], title_index: int, article: dict[str, Any]
-    ) -> tuple[set[int], set[int]]:
+    ) -> tuple[set[int], set[int], set[int]]:
         author_indexes: set[int] = set()
         affiliation_indexes: set[int] = set()
-        window = range(title_index + 1, min(len(paragraphs), title_index + 7))
+        boundary = self._front_matter_boundary(paragraphs, title_index)
+        front_indexes = set(range(0, boundary))
+        collecting_affiliations = True
+        window = range(title_index + 1, boundary)
         for index in window:
             text = paragraphs[index]["text"].strip()
             lower = text.lower()
-            if (
-                self.abstract_re.match(text)
-                or self.keyword_re.match(text)
-                or self.REFERENCE_RE.match(text)
-                or self._parse_section_title(text)
+            if any(marker in lower for marker in ("correspond", "orcid", "academic editor")):
+                collecting_affiliations = False
+            if collecting_affiliations and any(
+                word in lower for word in self.AFFILIATION_WORDS
             ):
-                break
-            if any(word in lower for word in self.AFFILIATION_WORDS):
                 article["affiliations"].append(text)
                 affiliation_indexes.add(index)
                 continue
-            if (
-                not author_indexes
-                and len(text) <= 80
-                and not self.FIGURE_RE.match(text)
-                and not self.TABLE_RE.match(text)
-                and paragraphs[index].get("type") != "formula"
-                and re.search(r"[，,；;\s、]", text)
-            ):
-                names = [name for name in re.split(r"[，,；;\s、]+", text) if name]
+            if not author_indexes:
+                names = self._parse_author_names(text)
+            else:
+                names = []
+            if names:
                 article["authors"] = [{"name": name, "orcid": ""} for name in names]
                 author_indexes.add(index)
-        return author_indexes, affiliation_indexes
+        article["affiliations"] = list(dict.fromkeys(article["affiliations"]))
+        return author_indexes, affiliation_indexes, front_indexes
+
+    def _front_matter_boundary(
+        self, paragraphs: list[dict[str, Any]], title_index: int
+    ) -> int:
+        for index in range(title_index + 1, len(paragraphs)):
+            text = paragraphs[index]["text"].strip()
+            if self.abstract_re.match(text) or self.keyword_re.match(text):
+                return index
+        return title_index + 1
+
+    def _parse_author_names(self, text: str) -> list[str]:
+        lower = text.casefold()
+        if (
+            not text
+            or len(text) > 300
+            or "@" in text
+            or any(word in lower for word in self.AFFILIATION_WORDS)
+            or any(marker in lower for marker in (
+                "correspond", "contributed", "affiliation", "address", "orcid",
+                "submitted", "revised", "accepted", "editor",
+            ))
+        ):
+            return []
+        cleaned = re.sub(r"\b(?:m\.?d\.?|ph\.?d\.?)\b", "", text, flags=re.I)
+        cleaned = re.sub(r"\s+and\s+", ",", cleaned, flags=re.I)
+        candidates = re.split(r"[,，;；]", cleaned)
+        names = []
+        for candidate in candidates:
+            value = re.sub(r"[\d¹²³⁴⁵⁶⁷⁸⁹⁰†‡#*]+(?:\s*)$", "", candidate).strip(" .:()")
+            value = re.sub(r"^[\d¹²³⁴⁵⁶⁷⁸⁹⁰†‡#*]+", "", value).strip()
+            words = [word for word in value.split() if any(char.isalpha() for char in word)]
+            is_chinese_name = bool(re.fullmatch(r"[\u3400-\u9fff]{2,4}", value))
+            if is_chinese_name or (2 <= len(words) <= 6 and len(value) <= 80):
+                names.append(value)
+        return list(dict.fromkeys(names))
 
     def _parse_reference(self, text: str, index: int) -> dict[str, Any]:
         return self.reference_parser.parse(text, index)
+
+    @classmethod
+    def _is_publisher_back_heading(cls, text: str) -> bool:
+        normalized = cls._normalized_heading(text)
+        prefix = normalized.split(":", 1)[0].strip()
+        return normalized in cls.PUBLISHER_BACK_HEADINGS or prefix in cls.PUBLISHER_BACK_HEADINGS
+
+    @staticmethod
+    def _normalized_heading(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip(" .:").casefold()
+
+    @staticmethod
+    def _looks_like_unlabeled_reference(text: str) -> bool:
+        author_start = re.match(
+            r"^[A-Z][A-Za-z'\u2019-]+\s+[A-Z]{1,4}(?:\s*,|,)", text
+        )
+        has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", text))
+        has_bibliographic_numbers = bool(
+            re.search(r"\b\d+\s*(?:\([^)]+\))?\s*:\s*\d+", text)
+        )
+        return bool(author_start and has_year and has_bibliographic_numbers)
+
+    @staticmethod
+    def _looks_like_reference_continuation(text: str) -> bool:
+        normalized = text.strip().casefold()
+        if normalized.startswith(("http://", "https://", "doi:")):
+            return True
+        source_prefixes = (
+            "journal ", "jama ", "jama netw", "bmj ", "circulation",
+            "nature ", "science ", "frontiers ", "proceedings ", "ieee ",
+        )
+        return normalized.startswith(source_prefixes) and bool(
+            re.search(r"\b(?:19|20)\d{2}\b", text)
+        )
 
     @staticmethod
     def _marker_regex(markers: list[str] | None, fallback: re.Pattern) -> re.Pattern:
@@ -324,16 +500,38 @@ class DocxParser:
     def _matches_any(patterns: list[re.Pattern], text: str) -> bool:
         return any(pattern.match(text) for pattern in patterns)
 
-    def _parse_section_title(self, text: str) -> dict[str, Any] | None:
+    def _parse_section_title(
+        self, text: str, node: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        node = node or {}
         for pattern in self.SECTION_PATTERNS:
             match = pattern.match(text)
             if not match:
                 continue
             marker, title = match.groups()
+            if marker[0].isdigit() and int(marker.split(".")[0]) > 99:
+                continue
+            if not any(char.isalpha() for char in title):
+                continue
+            compact_title = re.sub(r"\s+", "", title)
+            digit_ratio = sum(char.isdigit() for char in title) / max(
+                1, len(compact_title)
+            )
+            if marker[0].isdigit() and digit_ratio >= 0.15:
+                continue
             level = marker.count(".") + 1 if marker[0].isdigit() else (
                 2 if text.startswith(("（", "(")) else 1
             )
             return {"title": title.strip(), "level": level, "paragraphs": []}
+        if re.match(r"^\d+(?:\.\d+)*\s+", text):
+            return None
+        style = str(node.get("style", "")).strip()
+        if style.isdigit() and 1 <= int(style) <= 6 and any(char.isalpha() for char in text):
+            return {"title": text.strip(), "level": int(style), "paragraphs": []}
+        if node.get("type") == "heading" and text and any(char.isalpha() for char in text):
+            return {"title": text.strip(), "level": 1, "paragraphs": []}
+        if self._normalized_heading(text) in self.CONVENTIONAL_SUBHEADINGS:
+            return {"title": text.strip(), "level": 2, "paragraphs": []}
         return None
 
     @staticmethod

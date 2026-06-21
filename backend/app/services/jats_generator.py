@@ -40,25 +40,32 @@ class JatsGenerator:
 
         body = etree.SubElement(root, "body")
         section_elements = []
+        section_stack: list[tuple[int, Any]] = []
         for section_index, section in enumerate(article["sections"], start=1):
-            sec = etree.SubElement(body, "sec", id=f"sec{section_index}")
-            sec.set("sec-type", f"level-{section.get('level', 1)}")
+            level = max(1, int(section.get("level", 1) or 1))
+            while section_stack and section_stack[-1][0] >= level:
+                section_stack.pop()
+            parent = section_stack[-1][1] if section_stack else body
+            sec = etree.SubElement(parent, "sec", id=f"sec{section_index}")
+            sec.set("sec-type", f"level-{level}")
             etree.SubElement(sec, "title").text = section["title"]
             for paragraph in section.get("paragraphs", []):
                 self._append_body_paragraph(sec, paragraph)
             section_elements.append(sec)
+            section_stack.append((level, sec))
 
         fallback = section_elements[0] if section_elements else body
         for figure in article["figures"]:
             parent = self._parent_for(figure, section_elements, fallback)
-            fig = etree.SubElement(parent, "fig", id=figure["id"])
+            fig = self._floating_element(parent, "fig", id=figure["id"])
             caption = etree.SubElement(fig, "caption")
             etree.SubElement(caption, "p").text = figure.get("caption", "")
-            if figure.get("path"):
-                etree.SubElement(fig, "graphic", attrib={self.XLINK_HREF: figure["path"]})
+            paths = figure.get("paths") or ([figure["path"]] if figure.get("path") else [])
+            for path in paths:
+                etree.SubElement(fig, "graphic", attrib={self.XLINK_HREF: path})
         for index, table_data in enumerate(article.get("tables", []), start=1):
             parent = self._parent_for(table_data, section_elements, fallback)
-            table_wrap = etree.SubElement(
+            table_wrap = self._floating_element(
                 parent, "table-wrap", id=table_data.get("id") or f"tab{index}"
             )
             caption_text = table_data.get("caption", "")
@@ -80,15 +87,28 @@ class JatsGenerator:
                         row_element = etree.SubElement(tbody, "tr")
                         for cell in row:
                             etree.SubElement(row_element, "td").text = str(cell)
+            elif table_data.get("path"):
+                etree.SubElement(
+                    table_wrap,
+                    "graphic",
+                    attrib={self.XLINK_HREF: table_data["path"]},
+                )
         for list_data in article["lists"]:
             parent = self._parent_for(list_data, section_elements, fallback)
-            list_element = etree.SubElement(parent, "list", id=list_data["id"])
+            list_element = self._floating_element(parent, "list", id=list_data["id"])
             for item in list_data.get("items", []):
                 item_element = etree.SubElement(list_element, "list-item")
                 self._append_body_paragraph(item_element, item)
         for index, formula in enumerate(article["formulas"], start=1):
-            parent = self._parent_for(formula, section_elements, body)
-            disp = etree.SubElement(parent, "disp-formula", id=formula.get("id") or f"eq{index}")
+            section_index = formula.get("section_index", -1)
+            parent = (
+                section_elements[section_index]
+                if isinstance(section_index, int) and 0 <= section_index < len(section_elements)
+                else body
+            )
+            disp = self._floating_element(
+                parent, "disp-formula", id=formula.get("id") or f"eq{index}"
+            )
             alternatives = etree.SubElement(disp, "alternatives")
             if formula.get("mathml"):
                 try:
@@ -197,6 +217,16 @@ class JatsGenerator:
     def _parent_for(item: dict[str, Any], sections: list[Any], fallback: Any) -> Any:
         index = item.get("section_index", -1)
         return sections[index] if isinstance(index, int) and 0 <= index < len(sections) else fallback
+
+    @staticmethod
+    def _floating_element(parent: Any, tag: str, **attributes: str) -> Any:
+        element = etree.Element(tag, **attributes)
+        direct_sections = parent.xpath("./*[local-name()='sec']")
+        if etree.QName(parent).localname == "sec" and direct_sections:
+            parent.insert(parent.index(direct_sections[0]), element)
+        else:
+            parent.append(element)
+        return element
 
     def _append_body_paragraph(self, parent: Any, text: str) -> Any:
         paragraph = etree.SubElement(parent, "p")
