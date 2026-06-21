@@ -28,6 +28,12 @@ class JatsGenerator:
 
     def generate(self, article: dict[str, Any]) -> str:
         article = ProfileLoader.apply_metadata(article, self.profile)
+        self._allowed_xref_ids = {
+            str(item.get("id"))
+            for collection in ("figures", "tables", "formulas", "references")
+            for item in article.get(collection, [])
+            if item.get("id")
+        }
         root = etree.Element("article", nsmap=self.NSMAP)
         root.set("article-type", article.get("article_type") or "research-article")
         root.set("dtd-version", "1.3")
@@ -230,7 +236,9 @@ class JatsGenerator:
 
     def _append_body_paragraph(self, parent: Any, text: str) -> Any:
         paragraph = etree.SubElement(parent, "p")
-        self.xref_resolver.append_mixed_content(paragraph, text)
+        self.xref_resolver.append_mixed_content(
+            paragraph, text, allowed_ids=self._allowed_xref_ids
+        )
         return paragraph
 
     @staticmethod

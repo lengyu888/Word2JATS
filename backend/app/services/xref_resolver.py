@@ -99,6 +99,22 @@ class XrefResolver:
                 cursor = item["end"]
         return resolved
 
+    def resolve_against_targets(
+        self, text: str, target_ids: set[str]
+    ) -> list[dict[str, Any]]:
+        resolved = []
+        for match in self.resolve(text):
+            requested = match["rid"].split()
+            valid = [rid for rid in requested if rid in target_ids]
+            missing = [rid for rid in requested if rid not in target_ids]
+            resolved.append({
+                **match,
+                "rid": " ".join(valid),
+                "status": "ok" if not missing else "need_review",
+                "missing_targets": missing,
+            })
+        return resolved
+
     @staticmethod
     def _match_item(match: Any, ref_type: str, rid: str) -> dict[str, Any]:
         return {
@@ -111,12 +127,14 @@ class XrefResolver:
     ) -> None:
         cursor = 0
         previous = None
-        for match in self.resolve(text):
-            if allowed_ids is not None:
-                valid_ids = [rid for rid in match["rid"].split() if rid in allowed_ids]
-                if not valid_ids:
-                    continue
-                match = {**match, "rid": " ".join(valid_ids)}
+        matches = (
+            self.resolve_against_targets(text, allowed_ids)
+            if allowed_ids is not None
+            else self.resolve(text)
+        )
+        for match in matches:
+            if not match["rid"]:
+                continue
             plain_text = text[cursor:match["start"]]
             if previous is None:
                 element.text = plain_text

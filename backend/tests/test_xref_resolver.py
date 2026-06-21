@@ -65,6 +65,25 @@ def test_resolve_en_dash_bibliography_range_and_word_number_table():
     ]
 
 
+def test_resolve_against_targets_reports_partial_range():
+    result = XrefResolver().resolve_against_targets(
+        "See [1-4].", {"ref1", "ref2", "ref3"}
+    )[0]
+
+    assert result["rid"] == "ref1 ref2 ref3"
+    assert result["status"] == "need_review"
+    assert result["missing_targets"] == ["ref4"]
+
+
+def test_all_missing_target_remains_plain_text_in_delivery_xml():
+    article = build_article("See Figure 9.")
+
+    xml = JatsGenerator().generate(article)
+
+    assert 'rid="fig9"' not in xml
+    assert "Figure 9" in xml
+
+
 def test_generator_builds_multiple_xrefs_with_text_and_tail():
     article = build_article("如图1和表 1所示，公式见Eq. (1)，相关研究见[1,2]。")
 

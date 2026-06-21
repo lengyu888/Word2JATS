@@ -2,6 +2,7 @@ from typing import Any
 
 from lxml import etree
 from app.services.jats_schema_validator import JatsSchemaValidator
+from app.services.xref_resolver import XrefResolver
 
 
 class ArticleValidator:
@@ -21,6 +22,7 @@ class ArticleValidator:
         self._validate_required_content(article, errors)
         self._validate_quality(article, warnings)
         self._validate_xml(xml, errors, warnings, xref_checks)
+        self._validate_source_xrefs(article, warnings, xref_checks)
         schema = schema_result or self.schema_validator.validate(xml)
         business_rules = {
             "passed": not errors,
@@ -158,3 +160,29 @@ class ArticleValidator:
                 message = f"交叉引用检查通过：{rid}。"
                 if message not in xref_checks:
                     xref_checks.append(message)
+
+    @staticmethod
+    def _validate_source_xrefs(
+        article: dict[str, Any], warnings: list[str], xref_checks: list[str]
+    ) -> None:
+        target_ids = {
+            str(item.get("id"))
+            for collection in ("figures", "tables", "formulas", "references")
+            for item in article.get(collection, [])
+            if item.get("id")
+        }
+        resolver = XrefResolver()
+        for section in article.get("sections", []):
+            for paragraph in section.get("paragraphs", []):
+                for match in resolver.resolve_against_targets(paragraph, target_ids):
+                    for target in match["missing_targets"]:
+                        message = f"交叉引用目标不存在：{target}。"
+                        if message not in warnings:
+                            warnings.append(message)
+                    if match["missing_targets"]:
+                        review = (
+                            f"交叉引用需要人工复核：{match['text']} 缺少目标 "
+                            f"{' '.join(match['missing_targets'])}。"
+                        )
+                        if review not in xref_checks:
+                            xref_checks.append(review)
