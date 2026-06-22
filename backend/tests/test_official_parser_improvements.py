@@ -177,6 +177,59 @@ def test_greek_abbreviation_definition_is_not_plain_text_formula(tmp_path):
     assert nodes[1]["type"] == "formula"
 
 
+def test_display_omml_equation_label_is_normalized(tmp_path):
+    path = tmp_path / "labeled-equation.docx"
+    document = Document()
+    title = document.add_paragraph("Labeled Equation")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Formula normalization example.")
+    document.add_paragraph("Keywords: JATS; OMML; equation")
+    document.add_paragraph("1. Methods")
+    display = document.add_paragraph()
+    display.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    append_omml(display, "x=1")
+    display.add_run(" (1)")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["formulas"][0]["label"] == "(1)"
+    assert article["formulas"][0]["content"] == "x=1"
+    assert article["formulas"][0]["original_content"].endswith("(1)")
+
+
+def test_jats_formula_label_precedes_alternatives():
+    article = {
+        "title": "Formula serialization",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "Abstract",
+        "keywords": ["JATS", "formula", "label"],
+        "sections": [{"title": "Methods", "level": 1, "paragraphs": []}],
+        "figures": [],
+        "tables": [],
+        "lists": [],
+        "formulas": [{
+            "id": "eq1",
+            "label": "(1)",
+            "content": "x=1",
+            "latex": "x=1",
+            "section_index": 0,
+        }],
+        "references": [],
+    }
+
+    root = etree.fromstring(JatsGenerator().generate(article).encode("utf-8"))
+    formula = root.xpath("//*[local-name()='disp-formula']")[0]
+
+    assert [etree.QName(child).localname for child in formula] == [
+        "label", "alternatives"
+    ]
+    assert formula.xpath("string(./label)") == "(1)"
+    assert formula.xpath("string(./alternatives/tex-math)") == "x=1"
+
+
 def test_image_after_table_caption_becomes_table_graphic(tmp_path):
     image_path = tmp_path / "table.png"
     image_path.write_bytes(make_png((20, 80, 120)))

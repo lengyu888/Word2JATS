@@ -1,5 +1,6 @@
 from app.services.contributor_normalizer import ContributorNormalizer
 from app.services.caption_normalizer import CaptionNormalizer
+from app.services.formula_semantic_normalizer import FormulaSemanticNormalizer
 
 
 def test_removes_trailing_affiliation_markers_from_person_name():
@@ -43,3 +44,41 @@ def test_splits_chinese_compound_label_and_preserves_unlabeled_text():
         "caption": "Calibration plot",
         "status": "unchanged",
     }
+
+
+def test_extracts_equation_label_and_deduplicates_latex_suffix():
+    result = FormulaSemanticNormalizer().normalize({
+        "content": (
+            "AF = sum P(f_i) x f_i / sum P "
+            "AF=\\frac{\\sum_i P(f_i)f_i}{\\sum P} (1)"
+        ),
+        "latex": "AF=\\frac{\\sum_i P(f_i)f_i}{\\sum P}",
+        "type": "omml",
+    })
+
+    assert result["label"] == "(1)"
+    assert result["content"] == "AF = sum P(f_i) x f_i / sum P"
+    assert result["normalization_status"] == "normalized"
+
+
+def test_extracts_leading_equation_label():
+    result = FormulaSemanticNormalizer().normalize({
+        "content": "(2) x + y",
+        "latex": "x+y",
+        "type": "plain_text",
+    })
+
+    assert result["label"] == "(2)"
+    assert result["content"] == "x + y"
+
+
+def test_conflicting_formula_representations_degrade_to_partial():
+    result = FormulaSemanticNormalizer().normalize({
+        "content": "x + y",
+        "latex": "z^2",
+        "type": "omml",
+        "conversion_status": "success",
+    })
+
+    assert result["conversion_status"] == "partial"
+    assert result["issues"]

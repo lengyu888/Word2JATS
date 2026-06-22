@@ -6,6 +6,7 @@ from typing import Any
 from app.services.document_flow_parser import DocumentFlowParser
 from app.services.contributor_normalizer import ContributorNormalizer
 from app.services.float_candidate_matcher import FloatCandidateMatcher
+from app.services.formula_semantic_normalizer import FormulaSemanticNormalizer
 from app.services.profile_loader import ProfileLoader
 from app.services.reference_parser import ReferenceParser
 from app.services.structure_evidence import StructureEvidence
@@ -59,6 +60,7 @@ class DocxParser:
         self.contributor_normalizer = ContributorNormalizer()
         self.structure_evidence = StructureEvidence()
         self.float_matcher = FloatCandidateMatcher()
+        self.formula_normalizer = FormulaSemanticNormalizer()
         self.abstract_re = self._marker_regex(
             self.profile.get("abstract_markers"), self.ABSTRACT_RE
         )
@@ -95,6 +97,10 @@ class DocxParser:
         article["authors"] = [
             self.contributor_normalizer.normalize(author)
             for author in article["authors"]
+        ]
+        article["formulas"] = [
+            self.formula_normalizer.normalize(formula)
+            for formula in article["formulas"]
         ]
         self._resolve_table_image_fallbacks(article)
         self._annotate_structure_evidence(article)

@@ -130,6 +130,8 @@ class JatsGenerator:
             disp = self._floating_element(
                 parent, "disp-formula", id=formula.get("id") or f"eq{index}"
             )
+            if formula.get("label"):
+                etree.SubElement(disp, "label").text = formula["label"]
             alternatives = etree.SubElement(disp, "alternatives")
             if formula.get("mathml"):
                 try:
