@@ -41,6 +41,11 @@ class XrefResolver:
     WORD_TABLE_RE = re.compile(
         r"(?P<text>Table\s+(?P<word>" + "|".join(WORD_NUMBERS) + r"))\b", re.I
     )
+    SUBFIGURE_RE = re.compile(
+        r"(?P<text>(?:Fig(?:ure)?\.?)\s*(?P<number>\d+)\s*"
+        r"(?:\(\s*(?P<paren>[a-z])\s*\)|(?P<suffix>[a-z])))",
+        re.I,
+    )
     PATTERNS = (
         (
             "fig",
@@ -71,6 +76,13 @@ class XrefResolver:
 
     def resolve(self, text: str) -> list[dict[str, Any]]:
         matches: list[dict[str, Any]] = []
+        for match in self.SUBFIGURE_RE.finditer(text):
+            suffix = match.group("paren") or match.group("suffix")
+            matches.append(self._match_item(
+                match,
+                "fig",
+                f"fig{match.group('number')}{suffix.casefold()}",
+            ))
         for match in self.WORD_TABLE_RE.finditer(text):
             number = self.WORD_NUMBERS[match.group("word").casefold()]
             matches.append(self._match_item(match, "table", f"tab{number}"))

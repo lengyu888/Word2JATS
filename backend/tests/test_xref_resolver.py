@@ -65,6 +65,24 @@ def test_resolve_en_dash_bibliography_range_and_word_number_table():
     ]
 
 
+def test_resolves_subfigures_and_plural_table_lists():
+    matches = XrefResolver().resolve(
+        "See Fig. 1a, Figure 2(b), and Tables 1 and 2."
+    )
+
+    assert [(item["text"], item["ref_type"], item["rid"]) for item in matches] == [
+        ("Fig. 1a", "fig", "fig1a"),
+        ("Figure 2(b)", "fig", "fig2b"),
+        ("Tables 1 and 2", "table", "tab1 tab2"),
+    ]
+
+
+def test_resolves_mixed_bibliography_separators():
+    match = XrefResolver().resolve("Prior work [1, 3–5, 7].")[0]
+
+    assert match["rid"] == "ref1 ref3 ref4 ref5 ref7"
+
+
 def test_resolve_against_targets_reports_partial_range():
     result = XrefResolver().resolve_against_targets(
         "See [1-4].", {"ref1", "ref2", "ref3"}
