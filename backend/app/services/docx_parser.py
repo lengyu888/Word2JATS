@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services.document_flow_parser import DocumentFlowParser
+from app.services.contributor_normalizer import ContributorNormalizer
 from app.services.float_candidate_matcher import FloatCandidateMatcher
 from app.services.profile_loader import ProfileLoader
 from app.services.reference_parser import ReferenceParser
@@ -55,6 +56,7 @@ class DocxParser:
         self.media_dir = Path(media_dir)
         self.profile = profile or {}
         self.reference_parser = ReferenceParser()
+        self.contributor_normalizer = ContributorNormalizer()
         self.structure_evidence = StructureEvidence()
         self.float_matcher = FloatCandidateMatcher()
         self.abstract_re = self._marker_regex(
@@ -90,6 +92,10 @@ class DocxParser:
                 for index in front_indexes
             }
         self._parse_flow_content(flow, article, skipped)
+        article["authors"] = [
+            self.contributor_normalizer.normalize(author)
+            for author in article["authors"]
+        ]
         self._resolve_table_image_fallbacks(article)
         self._annotate_structure_evidence(article)
         return ProfileLoader.apply_metadata(article, self.profile)

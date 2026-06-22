@@ -7,6 +7,9 @@ class Author(BaseModel):
     name: str
     orcid: str = ""
     affiliation_ids: list[str] = Field(default_factory=list)
+    original_name: str = ""
+    markers: list[str] = Field(default_factory=list)
+    normalization_status: str = "unchanged"
 
 
 class Section(BaseModel):
