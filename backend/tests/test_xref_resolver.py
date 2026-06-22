@@ -146,6 +146,25 @@ def test_generator_builds_multiple_xrefs_with_text_and_tail():
     ]
 
 
+def test_generator_resolves_bibliography_xrefs_inside_table_cells():
+    article = build_article("Body text.")
+    article["tables"][0]["rows"] = [
+        ["Evidence", "Sources"],
+        ["Primary outcome", "Supported by [1,2]."],
+    ]
+
+    xml = JatsGenerator().generate(article)
+    root = etree.fromstring(xml.encode("utf-8"))
+    cell = root.xpath("//table-wrap/table/tbody/tr/td[2]")[0]
+
+    assert cell.text == "Supported by "
+    assert len(cell) == 1
+    assert cell[0].tag == "xref"
+    assert cell[0].get("ref-type") == "bibr"
+    assert cell[0].get("rid") == "ref1 ref2"
+    assert cell[0].tail == "."
+
+
 def test_validator_reports_valid_and_unresolved_xrefs():
     article = build_article("见图1和图2，参考[1-4]。")
     xml = JatsGenerator().generate(article)

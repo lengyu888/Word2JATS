@@ -86,13 +86,23 @@ class JatsGenerator:
                 thead = etree.SubElement(table, "thead")
                 header_row = etree.SubElement(thead, "tr")
                 for cell in rows[0]:
-                    etree.SubElement(header_row, "th").text = str(cell)
+                    cell_element = etree.SubElement(header_row, "th")
+                    self.xref_resolver.append_mixed_content(
+                        cell_element,
+                        str(cell),
+                        allowed_ids=self._allowed_xref_ids,
+                    )
                 if len(rows) > 1:
                     tbody = etree.SubElement(table, "tbody")
                     for row in rows[1:]:
                         row_element = etree.SubElement(tbody, "tr")
                         for cell in row:
-                            etree.SubElement(row_element, "td").text = str(cell)
+                            cell_element = etree.SubElement(row_element, "td")
+                            self.xref_resolver.append_mixed_content(
+                                cell_element,
+                                str(cell),
+                                allowed_ids=self._allowed_xref_ids,
+                            )
             elif table_data.get("path"):
                 etree.SubElement(
                     table_wrap,

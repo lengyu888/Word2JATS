@@ -42,7 +42,8 @@ class FloatCandidateMatcher:
         score = 0.35
         evidence = ["位于同一章节"]
         number = str(caption.get("number", "")).casefold()
-        if number and number == self._object_number(str(obj.get("id", ""))):
+        object_number = self._object_number(str(obj.get("id", "")))
+        if number and number == object_number:
             score += 0.35
             evidence.append("编号一致")
 
@@ -56,12 +57,21 @@ class FloatCandidateMatcher:
             score += 0.10
             evidence.append("文档流距离不超过 3 个节点")
 
+        table_screenshot = (
+            caption.get("kind") == "table"
+            and obj.get("kind") == "image"
+            and distance <= 3
+            and number != object_number
+        )
         compatible = (
             caption.get("kind") == "figure" and obj.get("kind") == "image"
         ) or (
             caption.get("kind") == "table" and obj.get("kind") == "table"
         )
-        if compatible:
+        if table_screenshot:
+            score += 0.40 if distance <= 1 else 0.35
+            evidence.append("紧邻表题的表格截图候选")
+        elif compatible:
             score += 0.15
             evidence.append("对象类型与题注一致")
         else:

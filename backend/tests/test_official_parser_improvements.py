@@ -260,10 +260,9 @@ def test_table_caption_prefers_native_table_over_nearby_image(tmp_path):
     assert article["tables"][0]["rows"] == [
         ["Metric", "Value"], ["Accuracy", "95%"]
     ]
+    assert article["tables"][0]["path"].endswith(".png")
     assert article["tables"][0]["status"] == "ok"
-    assert len(article["figures"]) == 1
-    assert article["figures"][0]["caption"] == ""
-    assert article["figures"][0]["status"] == "need_review"
+    assert article["figures"] == []
 
 
 def test_generator_nests_sections_by_level():

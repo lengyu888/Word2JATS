@@ -160,6 +160,29 @@ class DocxParser:
                         section_index=current_section_index,
                         _media_flow_index=node["flow_index"],
                     )
+                    caption_flow_index = article["tables"][pending_index].get(
+                        "_caption_flow_index"
+                    )
+                    clustered_figures = [
+                        figure_index
+                        for figure_index in unbound_figures
+                        if article["figures"][figure_index].get("section_index", -1)
+                        == current_section_index
+                        and caption_flow_index is not None
+                        and caption_flow_index
+                        < article["figures"][figure_index].get(
+                            "_media_flow_index", -1
+                        )
+                        < node["flow_index"]
+                    ]
+                    if len(clustered_figures) == 1:
+                        figure_index = clustered_figures[0]
+                        figure = article["figures"][figure_index]
+                        article["tables"][pending_index]["path"] = figure.get(
+                            "path", ""
+                        )
+                        figure["_absorbed_by_table"] = True
+                        unbound_figures.remove(figure_index)
                 else:
                     article["tables"].append({
                         "id": f"tab{len(article['tables']) + 1}",
@@ -362,6 +385,11 @@ class DocxParser:
         article["abstract"] = "\n".join(abstract_parts)
 
     def _resolve_table_image_fallbacks(self, article: dict[str, Any]) -> None:
+        article["figures"] = [
+            figure
+            for figure in article["figures"]
+            if not figure.pop("_absorbed_by_table", False)
+        ]
         captions = [
             {
                 "flow_index": table.get("_caption_flow_index"),

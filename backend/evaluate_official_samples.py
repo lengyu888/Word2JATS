@@ -15,7 +15,7 @@ def main() -> int:
         help="Markdown report path",
     )
     parser.add_argument("--profile", default="default", help="Journal profile name")
-    parser.add_argument("--average-floor", type=float, default=91.4)
+    parser.add_argument("--average-floor", type=float, default=93.0)
     parser.add_argument("--minimum-floor", type=int, default=88)
     parser.add_argument("--schema-floor", type=float, default=1.0)
     args = parser.parse_args()

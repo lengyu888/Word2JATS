@@ -88,3 +88,65 @@ def test_tied_candidates_are_left_for_review():
 
     assert result[0]["object_id"] is None
     assert result[0]["status"] == "need_review"
+
+
+def test_adjacent_image_can_be_a_table_screenshot_without_matching_global_id():
+    result = FloatCandidateMatcher().match(
+        captions=[{
+            "flow_index": 148,
+            "section_index": 5,
+            "kind": "table",
+            "number": "7",
+        }],
+        objects=[{
+            "flow_index": 149,
+            "section_index": 5,
+            "kind": "image",
+            "id": "fig10",
+        }],
+    )
+
+    assert result[0]["object_id"] == "fig10"
+    assert result[0]["status"] == "ok"
+    assert any("表格截图" in item for item in result[0]["evidence"])
+
+
+def test_unique_nearby_image_can_be_a_table_screenshot():
+    result = FloatCandidateMatcher().match(
+        captions=[{
+            "flow_index": 30,
+            "section_index": 2,
+            "kind": "table",
+            "number": "3",
+        }],
+        objects=[{
+            "flow_index": 33,
+            "section_index": 2,
+            "kind": "image",
+            "id": "fig6",
+        }],
+    )
+
+    assert result[0]["object_id"] == "fig6"
+    assert result[0]["status"] == "ok"
+
+
+def test_ordered_table_screenshots_prefer_the_closest_unused_image():
+    result = FloatCandidateMatcher().match(
+        captions=[
+            {"flow_index": 40, "section_index": 3, "kind": "table", "number": "4"},
+            {"flow_index": 43, "section_index": 3, "kind": "table", "number": "5"},
+            {"flow_index": 46, "section_index": 3, "kind": "table", "number": "6"},
+            {"flow_index": 48, "section_index": 3, "kind": "table", "number": "7"},
+        ],
+        objects=[
+            {"flow_index": 41, "section_index": 3, "kind": "image", "id": "fig7"},
+            {"flow_index": 44, "section_index": 3, "kind": "image", "id": "fig8"},
+            {"flow_index": 47, "section_index": 3, "kind": "image", "id": "fig9"},
+            {"flow_index": 49, "section_index": 3, "kind": "image", "id": "fig10"},
+        ],
+    )
+
+    assert [item["object_id"] for item in result] == [
+        "fig7", "fig8", "fig9", "fig10"
+    ]
