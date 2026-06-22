@@ -1,9 +1,9 @@
-import re
 from typing import Any
 
 from lxml import etree
 
 from app.services.xref_resolver import XrefResolver
+from app.services.caption_normalizer import CaptionNormalizer
 from app.services.profile_loader import ProfileLoader
 
 
@@ -17,13 +17,9 @@ class JatsGenerator:
         '<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD '
         'with MathML3 v1.3 20210610//EN" "JATS-journalpublishing1-3-mathml3.dtd">'
     )
-    TABLE_LABEL_RE = re.compile(
-        r"^\s*(表\s*\d+(?:\s*[-－—.]\s*\d+)*|table\s*\d+(?:\s*[-.]\s*\d+)*)",
-        re.I,
-    )
-
     def __init__(self, profile: dict[str, Any] | None = None):
         self.xref_resolver = XrefResolver()
+        self.caption_normalizer = CaptionNormalizer()
         self.profile = profile or {}
 
     def generate(self, article: dict[str, Any]) -> str:
@@ -61,11 +57,17 @@ class JatsGenerator:
             section_stack.append((level, sec))
 
         fallback = section_elements[0] if section_elements else body
-        for figure in article["figures"]:
+        for index, figure in enumerate(article["figures"], start=1):
             parent = self._parent_for(figure, section_elements, fallback)
             fig = self._floating_element(parent, "fig", id=figure["id"])
+            normalized_caption = self.caption_normalizer.split(
+                figure.get("caption", ""), "figure"
+            )
+            etree.SubElement(fig, "label").text = (
+                normalized_caption["label"] or f"Fig. {index}"
+            )
             caption = etree.SubElement(fig, "caption")
-            etree.SubElement(caption, "p").text = figure.get("caption", "")
+            etree.SubElement(caption, "p").text = normalized_caption["caption"]
             paths = figure.get("paths") or ([figure["path"]] if figure.get("path") else [])
             for path in paths:
                 etree.SubElement(fig, "graphic", attrib={self.XLINK_HREF: path})
@@ -75,11 +77,14 @@ class JatsGenerator:
                 parent, "table-wrap", id=table_data.get("id") or f"tab{index}"
             )
             caption_text = table_data.get("caption", "")
-            label_match = self.TABLE_LABEL_RE.match(caption_text)
-            label_text = label_match.group(1).strip() if label_match else f"Table {index}"
-            etree.SubElement(table_wrap, "label").text = label_text
+            normalized_caption = self.caption_normalizer.split(
+                caption_text, "table"
+            )
+            etree.SubElement(table_wrap, "label").text = (
+                normalized_caption["label"] or f"Table {index}"
+            )
             caption = etree.SubElement(table_wrap, "caption")
-            etree.SubElement(caption, "p").text = caption_text
+            etree.SubElement(caption, "p").text = normalized_caption["caption"]
             rows = table_data.get("rows", [])
             if rows:
                 table = etree.SubElement(table_wrap, "table")
