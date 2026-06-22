@@ -59,6 +59,17 @@ const formulaTag = (status) => ({ success: 'success', partial: 'warning', failed
         </div>
         <p>仅对实际存在的 JATS ID 生成 xref，缺失目标保留为原文。</p>
       </article>
+      <article>
+        <span>SEMANTIC NORMALIZATION</span>
+        <h3>语义归一化证据</h3>
+        <div class="evidence-stats">
+          <el-tag type="success">作者标记 {{ report.normalization_summary?.contributors || 0 }}</el-tag>
+          <el-tag type="success">图表标签 {{ report.normalization_summary?.captions || 0 }}</el-tag>
+          <el-tag type="success">公式编号 {{ report.normalization_summary?.labeled_formulas || 0 }}</el-tag>
+          <el-tag type="warning">公式冲突 {{ report.normalization_summary?.formula_conflicts || 0 }}</el-tag>
+        </div>
+        <p>统计可追溯的保守归一化操作，原始内容仍保留在结构化结果中。</p>
+      </article>
     </section>
     <section class="formula-overview">
       <div class="section-title"><span>FORMULA CONVERSION</span><h3>OMML 转换状态</h3></div>

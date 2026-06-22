@@ -82,3 +82,4 @@ def test_conflicting_formula_representations_degrade_to_partial():
 
     assert result["conversion_status"] == "partial"
     assert result["issues"]
+    assert result["issues"][0]["code"] == "formula_representation_conflict"

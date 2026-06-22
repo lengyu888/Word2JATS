@@ -42,6 +42,7 @@ class FormulaSemanticNormalizer:
             result["conversion_status"] = "partial"
             issues = list(result.get("issues", []))
             issues.append({
+                "code": "formula_representation_conflict",
                 "level": "warning",
                 "message": "公式可见文本与 LaTeX 回退内容差异较大，需要人工复核。",
                 "suggestion": "核对 MathML、LaTeX 与原始 Word 公式后再交付。",
