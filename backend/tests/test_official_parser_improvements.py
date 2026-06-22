@@ -231,6 +231,41 @@ def test_unbound_image_is_preserved_for_review(tmp_path):
     assert "图题" in figure["issues"][0]["message"]
 
 
+def test_table_caption_prefers_native_table_over_nearby_image(tmp_path):
+    image_path = tmp_path / "near-table.png"
+    image_path.write_bytes(make_png((40, 70, 110)))
+    path = tmp_path / "native-table-preference.docx"
+    document = Document()
+    title = document.add_paragraph("Native Table Preference")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: JATS; XML; tables")
+    document.add_paragraph("1. Results")
+    document.add_paragraph("Table 1 Results")
+    document.add_picture(str(image_path), width=Inches(1))
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Metric"
+    table.cell(0, 1).text = "Value"
+    table.cell(1, 0).text = "Accuracy"
+    table.cell(1, 1).text = "95%"
+    document.add_paragraph("References")
+    document.add_paragraph("[1] Example reference.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert len(article["tables"]) == 1
+    assert article["tables"][0]["caption"] == "Table 1 Results"
+    assert article["tables"][0]["rows"] == [
+        ["Metric", "Value"], ["Accuracy", "95%"]
+    ]
+    assert article["tables"][0]["status"] == "ok"
+    assert len(article["figures"]) == 1
+    assert article["figures"][0]["caption"] == ""
+    assert article["figures"][0]["status"] == "need_review"
+
+
 def test_generator_nests_sections_by_level():
     article = {
         "title": "Nested Sections",

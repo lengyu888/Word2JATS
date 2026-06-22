@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services.document_flow_parser import DocumentFlowParser
+from app.services.float_candidate_matcher import FloatCandidateMatcher
 from app.services.profile_loader import ProfileLoader
 from app.services.reference_parser import ReferenceParser
 from app.services.structure_evidence import StructureEvidence
@@ -55,6 +56,7 @@ class DocxParser:
         self.profile = profile or {}
         self.reference_parser = ReferenceParser()
         self.structure_evidence = StructureEvidence()
+        self.float_matcher = FloatCandidateMatcher()
         self.abstract_re = self._marker_regex(
             self.profile.get("abstract_markers"), self.ABSTRACT_RE
         )
@@ -88,6 +90,7 @@ class DocxParser:
                 for index in front_indexes
             }
         self._parse_flow_content(flow, article, skipped)
+        self._resolve_table_image_fallbacks(article)
         self._annotate_structure_evidence(article)
         return ProfileLoader.apply_metadata(article, self.profile)
 
@@ -118,19 +121,6 @@ class DocxParser:
 
             if node_type == "image":
                 in_abstract = False
-                table_index = self._pop_in_section(
-                    pending_tables, article["tables"], current_section_index
-                )
-                if table_index is not None:
-                    path = self._save_flow_image(
-                        node.get("media_path", ""), table_index + 1
-                    )
-                    article["tables"][table_index].update(
-                        path=path,
-                        section_index=current_section_index,
-                        _media_flow_index=node["flow_index"],
-                    )
-                    continue
                 pending_index = self._pop_in_section(
                     pending_figures, article["figures"], current_section_index
                 )
@@ -370,6 +360,55 @@ class DocxParser:
                 current_section["paragraphs"].append(text)
 
         article["abstract"] = "\n".join(abstract_parts)
+
+    def _resolve_table_image_fallbacks(self, article: dict[str, Any]) -> None:
+        captions = [
+            {
+                "flow_index": table.get("_caption_flow_index"),
+                "section_index": table.get("section_index", -1),
+                "kind": "table",
+                "number": self._caption_number(table.get("caption", "")),
+                "table_id": table.get("id"),
+            }
+            for table in article["tables"]
+            if table.get("caption") and not table.get("rows") and not table.get("path")
+        ]
+        objects = [
+            {
+                "flow_index": figure.get("_media_flow_index"),
+                "section_index": figure.get("section_index", -1),
+                "kind": "image",
+                "id": figure.get("id"),
+            }
+            for figure in article["figures"]
+            if figure.get("path") and not figure.get("caption")
+        ]
+        matches = self.float_matcher.match(captions, objects)
+        matched_figure_ids = set()
+        for caption, match in zip(captions, matches):
+            if not match.get("object_id"):
+                continue
+            table = next(
+                item for item in article["tables"] if item.get("id") == caption["table_id"]
+            )
+            figure = next(
+                item for item in article["figures"]
+                if item.get("id") == match["object_id"]
+            )
+            table["path"] = figure.get("path", "")
+            table["_media_flow_index"] = figure.get("_media_flow_index")
+            matched_figure_ids.add(figure.get("id"))
+        if matched_figure_ids:
+            article["figures"] = [
+                figure
+                for figure in article["figures"]
+                if figure.get("id") not in matched_figure_ids
+            ]
+
+    @staticmethod
+    def _caption_number(text: str) -> str:
+        match = re.search(r"\d+(?:[-.]\d+)?[a-z]?", text, re.I)
+        return match.group(0).casefold() if match else ""
 
     def _annotate_structure_evidence(self, article: dict[str, Any]) -> None:
         for object_type, collection in (
