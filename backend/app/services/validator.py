@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from lxml import etree
@@ -175,6 +176,12 @@ class ArticleValidator:
         for section in article.get("sections", []):
             for paragraph in section.get("paragraphs", []):
                 for match in resolver.resolve_against_targets(paragraph, target_ids):
+                    for original in match.get("normalized_from", []):
+                        parent_match = re.fullmatch(r"(fig\d+)[a-z]", original, re.I)
+                        parent = parent_match.group(1) if parent_match else match["rid"]
+                        message = f"交叉引用已归一化：{original} -> {parent}。"
+                        if message not in xref_checks:
+                            xref_checks.append(message)
                     for target in match["missing_targets"]:
                         message = f"交叉引用目标不存在：{target}。"
                         if message not in warnings:

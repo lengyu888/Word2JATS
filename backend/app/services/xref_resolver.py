@@ -117,13 +117,26 @@ class XrefResolver:
         resolved = []
         for match in self.resolve(text):
             requested = match["rid"].split()
-            valid = [rid for rid in requested if rid in target_ids]
-            missing = [rid for rid in requested if rid not in target_ids]
+            valid = []
+            missing = []
+            normalized_from = []
+            for rid in requested:
+                if rid in target_ids:
+                    valid.append(rid)
+                    continue
+                parent_match = re.fullmatch(r"(fig\d+)[a-z]", rid, re.I)
+                parent = parent_match.group(1) if parent_match else ""
+                if parent and parent in target_ids:
+                    valid.append(parent)
+                    normalized_from.append(rid)
+                else:
+                    missing.append(rid)
             resolved.append({
                 **match,
-                "rid": " ".join(valid),
-                "status": "ok" if not missing else "need_review",
+                "rid": " ".join(dict.fromkeys(valid)),
+                "status": "ok" if not missing and not normalized_from else "need_review",
                 "missing_targets": missing,
+                "normalized_from": normalized_from,
             })
         return resolved
 

@@ -102,6 +102,34 @@ def test_all_missing_target_remains_plain_text_in_delivery_xml():
     assert "Figure 9" in xml
 
 
+def test_subfigure_reference_falls_back_to_existing_parent():
+    result = XrefResolver().resolve_against_targets("See Fig. 1a.", {"fig1"})[0]
+
+    assert result["rid"] == "fig1"
+    assert result["status"] == "need_review"
+    assert result["missing_targets"] == []
+    assert result["normalized_from"] == ["fig1a"]
+
+
+def test_unknown_subfigure_remains_plain_text_in_delivery_xml():
+    article = build_article("See Fig. 9a.")
+
+    xml = JatsGenerator().generate(article)
+
+    assert 'rid="fig9a"' not in xml
+    assert 'rid="fig9"' not in xml
+    assert "Fig. 9a" in xml
+
+
+def test_validator_reports_subfigure_parent_normalization():
+    article = build_article("See Fig. 1a.")
+    xml = JatsGenerator().generate(article)
+
+    result = ArticleValidator().validate(article, xml)
+
+    assert "交叉引用已归一化：fig1a -> fig1。" in result["xref_checks"]
+
+
 def test_generator_builds_multiple_xrefs_with_text_and_tail():
     article = build_article("如图1和表 1所示，公式见Eq. (1)，相关研究见[1,2]。")
 
