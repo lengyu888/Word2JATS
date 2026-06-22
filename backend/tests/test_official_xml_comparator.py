@@ -127,6 +127,10 @@ def test_multi_target_rid_is_equivalent_to_split_xrefs(tmp_path):
     result = OfficialXmlComparator().compare(generated, official)
 
     assert result["dimensions"]["xrefs"]["score"] == 100
+    assert result["dimensions"]["xrefs"]["metrics"] == {
+        "xref_count": 100,
+        "xref_targets": 100,
+    }
 
 
 def test_float_dimension_reports_count_caption_and_section_metrics(tmp_path):

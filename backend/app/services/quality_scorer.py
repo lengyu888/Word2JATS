@@ -40,6 +40,15 @@ class QualityScorer:
             "formula_summary": self._formula_summary(article),
             "structure_evidence": self._structure_evidence_summary(article),
             "xref_summary": self._xref_summary(validation),
+            "float_evidence_summary": self._evidence_summary(
+                article, ("figures", "tables")
+            ),
+            "xref_normalization_summary": {
+                "normalized": sum(
+                    "已归一化" in item
+                    for item in validation.get("xref_checks", [])
+                )
+            },
         }
 
     def _metadata(self, article: dict[str, Any], issues: list[dict[str, str]]) -> int:
@@ -151,9 +160,17 @@ class QualityScorer:
 
     @staticmethod
     def _structure_evidence_summary(article: dict[str, Any]) -> dict[str, Any]:
+        return QualityScorer._evidence_summary(
+            article, ("figures", "tables", "formulas")
+        )
+
+    @staticmethod
+    def _evidence_summary(
+        article: dict[str, Any], collections: tuple[str, ...]
+    ) -> dict[str, Any]:
         items = [
             item
-            for collection in ("figures", "tables", "formulas")
+            for collection in collections
             for item in article.get(collection, [])
         ]
         counts = {"ok": 0, "need_review": 0, "warning": 0, "error": 0}
@@ -182,6 +199,7 @@ class QualityScorer:
                 for item in checks
             ),
             "missing": sum("目标不存在" in item for item in warnings),
+            "normalized": sum("已归一化" in item for item in checks),
         }
 
     def _references(self, article: dict[str, Any], issues: list[dict[str, str]]) -> int:

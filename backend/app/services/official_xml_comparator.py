@@ -298,7 +298,12 @@ class OfficialXmlComparator:
             ),
         }
         xref_metrics = {
-            "xrefs": self._xref_score(generated["xrefs"], official["xrefs"]),
+            "xref_count": self._count_score(
+                generated["xrefs"], official["xrefs"]
+            ),
+            "xref_targets": self._xref_score(
+                generated["xrefs"], official["xrefs"]
+            ),
         }
 
         metric_groups = {
@@ -369,6 +374,8 @@ class OfficialXmlComparator:
             "formulas": len(facts["formulas"]),
             "references": len(facts["references"]),
             "xrefs": len(facts["xrefs"]),
+            "xref_count": len(facts["xrefs"]),
+            "xref_targets": facts["xrefs"],
             "xml_well_formed": True,
         }
         for prefix, key in (
@@ -652,4 +659,6 @@ class OfficialXmlComparator:
             return suggestions["tables"]
         if metric.startswith("formula_"):
             return suggestions["formulas"]
+        if metric.startswith("xref_"):
+            return suggestions["xrefs"]
         return suggestions.get(metric, "Review the generated JATS structure.")

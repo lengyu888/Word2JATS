@@ -40,13 +40,13 @@ const formulaTag = (status) => ({ success: 'success', partial: 'warning', failed
     <section class="evidence-grid">
       <article>
         <span>STRUCTURE EVIDENCE</span>
-        <h3>结构识别证据</h3>
+        <h3>图表绑定证据</h3>
         <div class="evidence-stats">
-          <el-tag type="success">通过 {{ report.structure_evidence?.ok || 0 }}</el-tag>
-          <el-tag type="warning">需复核 {{ report.structure_evidence?.need_review || 0 }}</el-tag>
-          <el-tag type="danger">异常 {{ (report.structure_evidence?.warning || 0) + (report.structure_evidence?.error || 0) }}</el-tag>
+          <el-tag type="success">通过 {{ report.float_evidence_summary?.ok || 0 }}</el-tag>
+          <el-tag type="warning">需复核 {{ report.float_evidence_summary?.need_review || 0 }}</el-tag>
+          <el-tag type="danger">异常 {{ (report.float_evidence_summary?.warning || 0) + (report.float_evidence_summary?.error || 0) }}</el-tag>
         </div>
-        <p>平均置信度：{{ report.structure_evidence?.average_confidence ?? '-' }}</p>
+        <p>平均置信度：{{ report.float_evidence_summary?.average_confidence ?? '-' }}</p>
       </article>
       <article>
         <span>XREF TARGETS</span>
@@ -54,6 +54,7 @@ const formulaTag = (status) => ({ success: 'success', partial: 'warning', failed
         <div class="evidence-stats">
           <el-tag type="success">通过 {{ report.xref_summary?.passed || 0 }}</el-tag>
           <el-tag type="warning">需复核 {{ report.xref_summary?.need_review || 0 }}</el-tag>
+          <el-tag type="info">父目标归一化 {{ report.xref_summary?.normalized || 0 }}</el-tag>
           <el-tag type="danger">缺失 {{ report.xref_summary?.missing || 0 }}</el-tag>
         </div>
         <p>仅对实际存在的 JATS ID 生成 xref，缺失目标保留为原文。</p>

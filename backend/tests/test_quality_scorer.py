@@ -31,7 +31,11 @@ def test_quality_report_summarizes_structure_and_xref_evidence():
         "schema_errors": [],
         "errors": [],
         "warnings": ["交叉引用目标不存在：fig9。"],
-        "xref_checks": ["交叉引用检查通过：fig1。", "交叉引用需要人工复核：Figure 9 缺少目标 fig9。"],
+        "xref_checks": [
+            "交叉引用检查通过：fig1。",
+            "交叉引用需要人工复核：Figure 9 缺少目标 fig9。",
+            "交叉引用已归一化：fig1a -> fig1。",
+        ],
     }
 
     report = QualityScorer().score(article, validation)
@@ -40,4 +44,11 @@ def test_quality_report_summarizes_structure_and_xref_evidence():
     assert report["structure_evidence"]["average_confidence"] == 0.68
     assert report["formula_summary"]["partial"] == 1
     assert "complex_accent" in report["formula_summary"]["unsupported_features"]
-    assert report["xref_summary"] == {"passed": 1, "need_review": 1, "missing": 1}
+    assert report["xref_summary"] == {
+        "passed": 1, "need_review": 1, "missing": 1, "normalized": 1
+    }
+    assert report["float_evidence_summary"] == {
+        "total": 1, "ok": 0, "need_review": 1, "warning": 0, "error": 0,
+        "average_confidence": 0.65,
+    }
+    assert report["xref_normalization_summary"] == {"normalized": 1}
