@@ -478,7 +478,8 @@ def test_generator_omits_graphic_for_caption_only_figure():
     xml = JatsGenerator().generate(article)
 
     assert '<fig id="fig1">' in xml
-    assert "<p>Figure 1 Caption only</p>" in xml
+    assert "<label>Figure 1</label>" in xml
+    assert "<p>Caption only</p>" in xml
     assert "<graphic" not in xml
 
 
@@ -597,11 +598,44 @@ def test_generator_builds_jats_table_wrap():
 
     assert '<table-wrap id="tab1">' in xml
     assert "<label>表1</label>" in xml
-    assert "<p>表1 实验结果</p>" in xml
+    assert "<p>实验结果</p>" in xml
     assert "<thead>" in xml
     assert "<th>指标</th>" in xml
     assert "<tbody>" in xml
     assert "<td>95%</td>" in xml
+
+
+def test_generator_separates_float_labels_from_caption_text():
+    article = {
+        "title": "Float labels",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "Abstract",
+        "keywords": ["float", "JATS", "labels"],
+        "sections": [{"title": "Results", "level": 1, "paragraphs": ["Text"]}],
+        "figures": [{
+            "id": "fig1",
+            "caption": "Fig. 1: Architecture",
+            "path": "image.png",
+            "section_index": 0,
+        }],
+        "tables": [{
+            "id": "tab1",
+            "caption": "Table 1. Results",
+            "rows": [["Metric"], ["95%"]],
+            "section_index": 0,
+        }],
+        "lists": [],
+        "formulas": [],
+        "references": [],
+    }
+
+    root = etree.fromstring(JatsGenerator().generate(article).encode("utf-8"))
+
+    assert root.xpath("string(//fig/label)") == "Fig. 1"
+    assert root.xpath("string(//fig/caption/p)") == "Architecture"
+    assert root.xpath("string(//table-wrap/label)") == "Table 1"
+    assert root.xpath("string(//table-wrap/caption/p)") == "Results"
 
 
 def test_generator_omits_empty_table_element_for_caption_only_table():
@@ -633,7 +667,8 @@ def test_generator_omits_empty_table_element_for_caption_only_table():
     xml = JatsGenerator().generate(article)
 
     assert '<table-wrap id="tab1">' in xml
-    assert "<p>Table 1 Caption only</p>" in xml
+    assert "<label>Table 1</label>" in xml
+    assert "<p>Caption only</p>" in xml
     assert "<table/>" not in xml
 
 

@@ -152,3 +152,31 @@ def test_float_dimension_reports_count_caption_and_section_metrics(tmp_path):
         "table_count", "table_caption", "table_section",
     } <= metrics.keys()
     assert all(metrics[name] == 100 for name in metrics)
+
+
+def test_formula_alternatives_prefer_mathml_over_tex_fallback(tmp_path):
+    generated = """
+    <article xmlns:mml="http://www.w3.org/1998/Math/MathML"><front><article-meta>
+    <title-group><article-title>A</article-title></title-group><abstract><p>B</p></abstract>
+    </article-meta></front><body><sec><title>Methods</title>
+    <disp-formula id="eq1"><label>(1)</label><alternatives>
+      <mml:math><mml:mi>A</mml:mi><mml:mo>=</mml:mo><mml:mn>1</mml:mn></mml:math>
+      <tex-math><![CDATA[A=\frac{duplicated fallback}{text}]]></tex-math>
+    </alternatives></disp-formula>
+    </sec></body><back/></article>
+    """
+    official = write_official(tmp_path, """
+    <article xmlns:mml="http://www.w3.org/1998/Math/MathML"><front><article-meta>
+    <title-group><article-title>A</article-title></title-group><abstract><p>B</p></abstract>
+    </article-meta></front><body><sec><title>Methods</title>
+    <disp-formula id="F1"><label>(1)</label>
+      <mml:math><mml:mi>A</mml:mi><mml:mo>=</mml:mo><mml:mn>1</mml:mn></mml:math>
+    </disp-formula>
+    </sec></body><back/></article>
+    """)
+
+    result = OfficialXmlComparator().compare(generated, official)
+
+    assert result["facts"]["generated"]["formulas"][0]["text"] == "(1) A = 1"
+    assert "duplicated fallback" not in result["facts"]["generated"]["formulas"][0]["text"]
+    assert result["dimensions"]["formulas"]["metrics"]["formula_content"] == 100

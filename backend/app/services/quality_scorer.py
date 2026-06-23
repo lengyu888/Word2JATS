@@ -1,5 +1,7 @@
 from typing import Any
 
+from app.services.caption_normalizer import CaptionNormalizer
+
 
 class QualityScorer:
     WEIGHTS = {
@@ -49,6 +51,33 @@ class QualityScorer:
                     for item in validation.get("xref_checks", [])
                 )
             },
+            "normalization_summary": self._normalization_summary(article),
+        }
+
+    @staticmethod
+    def _normalization_summary(article: dict[str, Any]) -> dict[str, int]:
+        caption_normalizer = CaptionNormalizer()
+        captions = sum(
+            caption_normalizer.split(item.get("caption", ""), object_type)["status"]
+            in {"normalized", "need_review"}
+            for collection, object_type in (("figures", "figure"), ("tables", "table"))
+            for item in article.get(collection, [])
+        )
+        formulas = article.get("formulas", [])
+        return {
+            "contributors": sum(
+                author.get("normalization_status") == "normalized"
+                for author in article.get("authors", [])
+            ),
+            "captions": captions,
+            "labeled_formulas": sum(bool(formula.get("label")) for formula in formulas),
+            "formula_conflicts": sum(
+                any(
+                    issue.get("code") == "formula_representation_conflict"
+                    for issue in formula.get("issues", [])
+                )
+                for formula in formulas
+            ),
         }
 
     def _metadata(self, article: dict[str, Any], issues: list[dict[str, str]]) -> int:

@@ -7,6 +7,9 @@ class Author(BaseModel):
     name: str
     orcid: str = ""
     affiliation_ids: list[str] = Field(default_factory=list)
+    original_name: str = ""
+    markers: list[str] = Field(default_factory=list)
+    normalization_status: str = "unchanged"
 
 
 class Section(BaseModel):
@@ -51,13 +54,16 @@ class ArticleList(BaseModel):
 
 class Formula(BaseModel):
     id: str = ""
+    label: str = ""
     content: str = ""
+    original_content: str = ""
     omml: str = ""
     mathml: str = ""
     latex: str = ""
     type: str = "plain_text"
     section_index: int = -1
     conversion_status: str = "success"
+    normalization_status: str = "unchanged"
     supported_features: list[str] = Field(default_factory=list)
     unsupported_features: list[str] = Field(default_factory=list)
     issues: list[dict] = Field(default_factory=list)

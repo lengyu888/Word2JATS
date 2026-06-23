@@ -52,3 +52,54 @@ def test_quality_report_summarizes_structure_and_xref_evidence():
         "average_confidence": 0.65,
     }
     assert report["xref_normalization_summary"] == {"normalized": 1}
+
+
+def test_quality_report_counts_semantic_normalizations():
+    article = {
+        "title": "Normalization evidence",
+        "abstract": "Abstract",
+        "keywords": ["JATS", "XML", "quality"],
+        "authors": [{
+            "name": "Alice Smith",
+            "original_name": "Alice Smith²",
+            "normalization_status": "normalized",
+        }],
+        "affiliations": ["Publishing Lab"],
+        "journal_title": "Journal",
+        "publisher_name": "Publisher",
+        "sections": [{"title": "Results", "paragraphs": ["Results text."]}],
+        "figures": [{"id": "fig1", "caption": "Fig. 1 Architecture"}],
+        "tables": [{"id": "tab1", "caption": "Table 1. Results", "rows": [["A"]]}],
+        "formulas": [{
+            "id": "eq1",
+            "label": "(1)",
+            "content": "x+y",
+            "latex": "z^2",
+            "conversion_status": "partial",
+            "issues": [{
+                "code": "formula_representation_conflict",
+                "level": "warning",
+                "message": "Formula semantic representations conflict.",
+                "suggestion": "Review the source equation.",
+            }],
+        }],
+        "references": [{"id": "ref1", "raw": "Reference", "parse_confidence": 0.8}],
+        "lists": [],
+    }
+    validation = {
+        "xml_well_formed": True,
+        "jats_schema_valid": True,
+        "schema_errors": [],
+        "errors": [],
+        "warnings": [],
+        "xref_checks": [],
+    }
+
+    report = QualityScorer().score(article, validation)
+
+    assert report["normalization_summary"] == {
+        "contributors": 1,
+        "captions": 2,
+        "labeled_formulas": 1,
+        "formula_conflicts": 1,
+    }
