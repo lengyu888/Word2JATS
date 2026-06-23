@@ -50,6 +50,8 @@ class JatsGenerator:
             parent = section_stack[-1][1] if section_stack else body
             sec = etree.SubElement(parent, "sec", id=f"sec{section_index}")
             sec.set("sec-type", f"level-{level}")
+            if section.get("label"):
+                etree.SubElement(sec, "label").text = section["label"]
             etree.SubElement(sec, "title").text = section["title"]
             for paragraph in section.get("paragraphs", []):
                 self._append_body_paragraph(sec, paragraph)

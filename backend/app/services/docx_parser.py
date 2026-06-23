@@ -30,6 +30,7 @@ class DocxParser:
         r"(?:\([A-Za-z]\s*[-\u2013]\s*[A-Za-z]\)|\bpanels?\b|\bplots?\b)", re.I
     )
     SECTION_PATTERNS = (
+        re.compile(r"^(\d+(?:\.\d+)*\.?)\s+(.+)$"),
         re.compile(r"^(\d+(?:\.\d+)*)[\s、.]+(.+)$"),
         re.compile(r"^([一二三四五六七八九十]+)、\s*(.+)$"),
         re.compile(r"^[（(]([一二三四五六七八九十]+)[）)]\s*(.+)$"),
@@ -94,6 +95,7 @@ class DocxParser:
                 for index in front_indexes
             }
         self._parse_flow_content(flow, article, skipped)
+        self._assign_style_section_labels(article)
         article["authors"] = [
             self.contributor_normalizer.normalize(author)
             for author in article["authors"]
@@ -348,6 +350,18 @@ class DocxParser:
                     pending_tables.append(len(article["tables"]) - 1)
                 continue
 
+            if (
+                node_type == "heading"
+                and not str(node.get("style", "")).strip()
+                and current_section is not None
+                and int(current_section.get("level", 1) or 1) >= 3
+                and self._normalized_heading(text) not in self.CONVENTIONAL_SUBHEADINGS
+                and not re.match(r"^\d+(?:\.\d+)*\.?\s+", text)
+                and not text.lstrip().startswith(("\u25cf", "\u2022"))
+            ):
+                current_section["paragraphs"].append(text)
+                continue
+
             section = self._parse_section_title(text, node)
             if section:
                 in_abstract = False
@@ -444,6 +458,32 @@ class DocxParser:
                 for figure in article["figures"]
                 if figure.get("id") not in matched_figure_ids
             ]
+
+    def _assign_style_section_labels(self, article: dict[str, Any]) -> None:
+        counters = [0] * 6
+        for section in article.get("sections", []):
+            level = max(1, min(6, int(section.get("level", 1) or 1)))
+            existing = section.get("label", "")
+            if existing:
+                numbers = [int(value) for value in re.findall(r"\d+", existing)]
+                if numbers:
+                    for index, number in enumerate(numbers[:6]):
+                        counters[index] = number
+                    for index in range(len(numbers), len(counters)):
+                        counters[index] = 0
+                section.pop("_numbered_style_heading", None)
+                continue
+            if not section.pop("_numbered_style_heading", False):
+                continue
+            for index in range(level - 1):
+                if counters[index] == 0:
+                    counters[index] = 1
+            counters[level - 1] += 1
+            for index in range(level, len(counters)):
+                counters[index] = 0
+            parts = counters[:level]
+            label = ".".join(str(part) for part in parts)
+            section["label"] = f"{label}." if level == 1 else label
 
     @staticmethod
     def _caption_number(text: str) -> str:
@@ -686,7 +726,8 @@ class DocxParser:
             if not match:
                 continue
             marker, title = match.groups()
-            if marker[0].isdigit() and int(marker.split(".")[0]) > 99:
+            marker_core = marker.rstrip(".")
+            if marker[0].isdigit() and int(marker_core.split(".")[0]) > 99:
                 continue
             if not any(char.isalpha() for char in title):
                 continue
@@ -696,15 +737,25 @@ class DocxParser:
             )
             if marker[0].isdigit() and digit_ratio >= 0.15:
                 continue
-            level = marker.count(".") + 1 if marker[0].isdigit() else (
+            level = marker_core.count(".") + 1 if marker[0].isdigit() else (
                 2 if text.startswith(("（", "(")) else 1
             )
-            return {"title": title.strip(), "level": level, "paragraphs": []}
+            return {
+                "label": self._section_label(marker, text),
+                "title": title.strip(),
+                "level": level,
+                "paragraphs": [],
+            }
         if re.match(r"^\d+(?:\.\d+)*\s+", text):
             return None
         style = str(node.get("style", "")).strip()
         if style.isdigit() and 1 <= int(style) <= 6 and any(char.isalpha() for char in text):
-            return {"title": text.strip(), "level": int(style), "paragraphs": []}
+            return {
+                "title": text.strip(),
+                "level": int(style),
+                "paragraphs": [],
+                "_numbered_style_heading": True,
+            }
         if node.get("type") == "heading" and text and any(char.isalpha() for char in text):
             return {"title": text.strip(), "level": 1, "paragraphs": []}
         if self._normalized_heading(text) in self.CONVENTIONAL_SUBHEADINGS:
@@ -714,6 +765,14 @@ class DocxParser:
     @staticmethod
     def _split_values(text: str) -> list[str]:
         return [value.strip() for value in re.split(r"[；;，,、]+", text) if value.strip()]
+
+    @staticmethod
+    def _section_label(marker: str, text: str) -> str:
+        if marker and marker[0].isdigit():
+            marker = marker.rstrip(".")
+            return f"{marker}." if "." not in marker else marker
+        stripped = text.strip()
+        return stripped[: stripped.find(marker) + len(marker)] if marker in stripped else marker
 
     @staticmethod
     def _pop_in_section(

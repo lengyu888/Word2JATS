@@ -159,7 +159,7 @@ class OfficialXmlComparator:
             for section in parent.xpath("./*[local-name()='sec']"):
                 facts.append({
                     "id": section.get("id", ""),
-                    "title": self._text_at(section, "./*[local-name()='title'][1]"),
+                    "title": self._section_heading_text(section),
                     "level": level,
                     "paragraph_count": len(section.xpath("./*[local-name()='p']")),
                 })
@@ -188,7 +188,7 @@ class OfficialXmlComparator:
             {
                 "id": element.get("id", ""),
                 "label": self._text_at(element, "./*[local-name()='label'][1]"),
-                "text": self._element_text(element),
+                "text": self._formula_text(element),
                 "section": self._ancestor_section_title(element),
             }
             for element in body.xpath(".//*[local-name()='disp-formula']")
@@ -611,9 +611,38 @@ class OfficialXmlComparator:
         parts = [part.strip() for part in element.itertext() if part.strip()]
         return cls.SPACE_RE.sub(" ", " ".join(parts)).strip()
 
+    def _formula_text(self, element: Any) -> str:
+        label = self._text_at(element, "./*[local-name()='label'][1]")
+        math = self._first(
+            element,
+            "./*[local-name()='alternatives'][1]/*[local-name()='math'][1]"
+            " | ./*[local-name()='math'][1]",
+        )
+        if math is not None:
+            body = self._element_text(math)
+        else:
+            primary = self._first(
+                element,
+                "./*[local-name()='alternatives'][1]/*[not(local-name()='tex-math')][1]",
+            )
+            if primary is not None:
+                body = self._element_text(primary)
+            else:
+                body = self._text_at(
+                    element,
+                    "./*[local-name()='alternatives'][1]/*[local-name()='tex-math'][1]"
+                    " | ./*[local-name()='tex-math'][1]",
+                )
+        return self.SPACE_RE.sub(" ", " ".join(part for part in (label, body) if part)).strip()
+
+    def _section_heading_text(self, section: Any) -> str:
+        label = self._text_at(section, "./*[local-name()='label'][1]")
+        title = self._text_at(section, "./*[local-name()='title'][1]")
+        return self.SPACE_RE.sub(" ", " ".join(part for part in (label, title) if part)).strip()
+
     def _ancestor_section_title(self, element: Any) -> str:
         sections = element.xpath("ancestor::*[local-name()='sec'][1]")
-        return self._text_at(sections[0], "./*[local-name()='title'][1]") if sections else ""
+        return self._section_heading_text(sections[0]) if sections else ""
 
     @staticmethod
     def _difference(

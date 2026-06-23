@@ -79,6 +79,7 @@ def test_numbered_affiliations_and_numeric_table_text_are_not_sections(tmp_path)
     assert [section["title"] for section in article["sections"]] == [
         "Introduction", "Methods"
     ]
+    assert [section["label"] for section in article["sections"]] == ["1.", "2."]
     assert "274 242 13844" in article["sections"][0]["paragraphs"]
 
 
@@ -142,6 +143,56 @@ def test_bullet_subheading_inherits_one_level_below_current_heading(tmp_path):
     article = DocxParser(path, tmp_path / "media").parse()
 
     assert [section["level"] for section in article["sections"]] == [3, 4]
+
+
+def test_numeric_heading_styles_receive_hierarchical_section_labels(tmp_path):
+    path = tmp_path / "styled-numbered-headings.docx"
+    document = Document()
+    title = document.add_paragraph("Styled Heading Labels")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: JATS; XML; headings")
+    first = document.add_paragraph("Introduction")
+    first.style = document.styles.add_style("1", 1)
+    child = document.add_paragraph("Background")
+    child.style = document.styles.add_style("2", 1)
+    sibling = document.add_paragraph("Methods")
+    sibling.style = document.styles["1"]
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert [
+        (section["label"], section["title"], section["level"])
+        for section in article["sections"]
+    ] == [
+        ("1.", "Introduction", 1),
+        ("1.1", "Background", 2),
+        ("2.", "Methods", 1),
+    ]
+
+
+def test_unstyled_heading_inside_section_remains_paragraph(tmp_path):
+    path = tmp_path / "unstyled-inner-heading.docx"
+    document = Document()
+    title = document.add_paragraph("Unstyled Inner Heading")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: JATS; XML; headings")
+    document.add_paragraph("1.1.1 Methods")
+    inner = document.add_paragraph("Internal validation")
+    inner.runs[0].bold = True
+    document.add_paragraph("Bootstrap validation text.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert [(section["label"], section["title"]) for section in article["sections"]] == [
+        ("1.1.1", "Methods")
+    ]
+    assert "Internal validation" in article["sections"][0]["paragraphs"]
 
 
 def test_inline_omml_stays_in_paragraph_and_display_omml_is_one_formula(tmp_path):
@@ -228,6 +279,31 @@ def test_jats_formula_label_precedes_alternatives():
     ]
     assert formula.xpath("string(./label)") == "(1)"
     assert formula.xpath("string(./alternatives/tex-math)") == "x=1"
+
+
+def test_jats_section_label_precedes_title_for_numbered_headings(tmp_path):
+    path = tmp_path / "numbered-section-label.docx"
+    document = Document()
+    title = document.add_paragraph("Numbered Section Labels")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Section label example.")
+    document.add_paragraph("Keywords: JATS; sections; labels")
+    document.add_paragraph("2. Methods")
+    document.add_paragraph("Method text.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+    root = etree.fromstring(JatsGenerator().generate(article).encode("utf-8"))
+    section = root.xpath("//*[local-name()='body']/*[local-name()='sec']")[0]
+
+    assert article["sections"][0]["label"] == "2."
+    assert article["sections"][0]["title"] == "Methods"
+    assert [etree.QName(child).localname for child in section[:2]] == [
+        "label", "title"
+    ]
+    assert section.xpath("string(./label)") == "2."
+    assert section.xpath("string(./title)") == "Methods"
 
 
 def test_image_after_table_caption_becomes_table_graphic(tmp_path):
