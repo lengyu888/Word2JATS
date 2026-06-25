@@ -394,6 +394,36 @@ def test_table_caption_prefers_native_table_over_nearby_image(tmp_path):
     assert article["figures"] == []
 
 
+def test_caption_continuation_lines_stay_with_float_caption(tmp_path):
+    image_path = tmp_path / "figure.png"
+    image_path.write_bytes(make_png((70, 90, 120)))
+    path = tmp_path / "caption-continuation.docx"
+    document = Document()
+    title = document.add_paragraph("Caption Continuation")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: JATS; XML; figures")
+    document.add_paragraph("1. Results")
+    document.add_picture(str(image_path), width=Inches(1))
+    document.add_paragraph("Figure 1. Calibration plots")
+    continuation = (
+        "The x-axis shows predicted probability and the y-axis shows observed outcomes."
+    )
+    document.add_paragraph(continuation)
+    body_text = "The model was then compared with baseline methods."
+    document.add_paragraph(body_text)
+    document.add_paragraph("References")
+    document.add_paragraph("[1] Example reference.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert continuation in article["figures"][0]["caption"]
+    assert continuation not in article["sections"][0]["paragraphs"]
+    assert body_text in article["sections"][0]["paragraphs"]
+
+
 def test_generator_nests_sections_by_level():
     article = {
         "title": "Nested Sections",

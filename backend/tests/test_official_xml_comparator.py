@@ -133,6 +133,36 @@ def test_multi_target_rid_is_equivalent_to_split_xrefs(tmp_path):
     }
 
 
+def test_leading_zero_object_ids_compare_semantically(tmp_path):
+    generated = tmp_path / "generated.xml"
+    official = tmp_path / "official.xml"
+    generated.write_text(
+        """
+        <article><body><sec>
+          <p>See <xref ref-type="fig" rid="fig1">Figure 1</xref>
+          and <xref ref-type="table" rid="tab9">Table 9</xref>.</p>
+        </sec></body><back/></article>
+        """,
+        encoding="utf-8",
+    )
+    official.write_text(
+        """
+        <article><body><sec>
+          <p>See <xref ref-type="fig" rid="fig001">Figure 1</xref>
+          and <xref ref-type="table" rid="tab009">Table 9</xref>.</p>
+        </sec></body><back/></article>
+        """,
+        encoding="utf-8",
+    )
+
+    result = OfficialXmlComparator().compare(generated.read_text(encoding="utf-8"), official)
+
+    assert result["dimensions"]["xrefs"]["metrics"] == {
+        "xref_count": 100,
+        "xref_targets": 100,
+    }
+
+
 def test_float_dimension_reports_count_caption_and_section_metrics(tmp_path):
     generated = """
     <article><front><article-meta><title-group><article-title>A</article-title></title-group>

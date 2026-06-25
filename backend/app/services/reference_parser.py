@@ -4,13 +4,22 @@ from typing import Any
 
 class ReferenceParser:
     LABEL_RE = re.compile(
-        r"^\s*(?P<label>\[\s*\d+\s*\]|\(\s*\d+\s*\)|（\s*\d+\s*）|\d+\s*[.．、])\s*(?P<raw>.*)$"
+        r"^\s*(?P<label>\[\s*\d+\s*\]|［\s*\d+\s*］|\(\s*\d+\s*\)|"
+        r"（\s*\d+\s*）|\d+\s*[.)．、])\s*(?P<raw>.*)$"
     )
     DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", re.I)
     YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
-    PAGES_RE = re.compile(r"(?P<fpage>\d+)\s*[-–—]\s*(?P<lpage>\d+)")
-    VOLUME_ISSUE_RE = re.compile(r"(?P<volume>\d+)\s*\(\s*(?P<issue>\d+)\s*\)")
+    PAGES_RE = re.compile(r"(?P<fpage>\d+)\s*[-\u2013\u2014]\s*(?P<lpage>\d+)")
+    VOLUME_ISSUE_RE = re.compile(r"(?P<volume>\d+)\s*\(\s*(?P<issue>[^)]+)\s*\)")
     TYPE_RE = re.compile(r"\[(?P<type>[JMCDBR])\]", re.I)
+    JOURNAL_TAIL_RE = re.compile(
+        r"^(?P<source>.+?)\s*[,;]?\s*"
+        r"(?P<year>(?:19|20)\d{2})"
+        r"(?:\s*[,;]\s*(?P<volume>\d+))?"
+        r"(?:\s*\(\s*(?P<issue>[^)]+)\s*\))?"
+        r"(?:\s*[:：]\s*(?P<fpage>\d+)\s*[-\u2013\u2014]\s*(?P<lpage>\d+))?"
+        r"\.?\s*$"
+    )
 
     TYPE_MAP = {
         "J": "journal",
@@ -65,7 +74,9 @@ class ReferenceParser:
         if year:
             result["year"] = year.group(0)
         if pages:
-            result["fpage"], result["lpage"] = pages.group("fpage"), pages.group("lpage")
+            result["fpage"], result["lpage"] = (
+                pages.group("fpage"), pages.group("lpage")
+            )
         if volume_issue:
             result["volume"], result["issue"] = (
                 volume_issue.group("volume"), volume_issue.group("issue")
@@ -78,17 +89,42 @@ class ReferenceParser:
     @staticmethod
     def _parse_main_parts(raw: str, result: dict[str, Any]) -> None:
         clean = re.sub(r"\[[JMCDBR]\]", "", raw, flags=re.I)
+        clean = re.sub(r"https?://(?:dx\.)?doi\.org/\S+", "", clean, flags=re.I)
         clean = re.sub(r"\bdoi\s*:\s*\S+", "", clean, flags=re.I)
-        parts = [part.strip(" ,;。") for part in re.split(r"\.\s+", clean) if part.strip()]
+        parts = [
+            part.strip(" ,;。")
+            for part in re.split(r"\.\s+", clean)
+            if part.strip(" ,;。")
+        ]
         if len(parts) >= 2:
-            result["authors"] = [
-                item.strip() for item in re.split(r"[,，;；]|\s+and\s+", parts[0], flags=re.I)
-                if item.strip()
-            ]
-            result["article_title"] = parts[1]
-        tail = parts[2] if len(parts) >= 3 else ""
-        if tail and not re.match(r"^(?:19|20)\d{2}\b", tail):
-            source = re.split(r"[,，]\s*(?:19|20)\d{2}", tail, maxsplit=1)[0].strip()
-            result["source"] = source
+            result["authors"] = ReferenceParser._split_authors(parts[0])
+            result["article_title"] = parts[1].strip(" ,;。")
+        tail = " ".join(parts[2:]) if len(parts) >= 3 else ""
+        if tail:
+            ReferenceParser._parse_journal_tail(tail, result)
         if not result["publication_type"] and result["source"]:
             result["publication_type"] = "journal"
+
+    @staticmethod
+    def _split_authors(value: str) -> list[str]:
+        authors = [
+            item.strip()
+            for item in re.split(r"[;,，；]|(?:\s+and\s+)", value, flags=re.I)
+            if item.strip()
+        ]
+        return authors
+
+    @staticmethod
+    def _parse_journal_tail(tail: str, result: dict[str, Any]) -> None:
+        tail = tail.strip(" ,;。.")
+        match = ReferenceParser.JOURNAL_TAIL_RE.match(tail)
+        if match:
+            result["source"] = match.group("source").strip(" ,;。.")
+            for field in ("year", "volume", "issue", "fpage", "lpage"):
+                value = match.group(field)
+                if value:
+                    result[field] = value.strip()
+            return
+        if not re.match(r"^(?:19|20)\d{2}\b", tail):
+            source = re.split(r"[,，]\s*(?:19|20)\d{2}", tail, maxsplit=1)[0]
+            result["source"] = source.strip(" ,;。.")

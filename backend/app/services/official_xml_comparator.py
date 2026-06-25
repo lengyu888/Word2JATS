@@ -566,7 +566,7 @@ class OfficialXmlComparator:
         number = re.search(r"\d+", item.get("rid", "")) or re.search(
             r"\d+", item.get("text", "")
         )
-        ordinal = number.group(0) if number else cls._normalize(item.get("text", ""))
+        ordinal = str(int(number.group(0))) if number else cls._normalize(item.get("text", ""))
         return f"{item.get('type', '')}:{ordinal}"
 
     @staticmethod

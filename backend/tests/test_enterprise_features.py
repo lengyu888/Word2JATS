@@ -37,6 +37,28 @@ def test_reference_parser_extracts_gbt_and_english_fields():
     assert gbt["parse_confidence"] > 0.5
 
 
+def test_reference_parser_extracts_compact_english_journal_tail():
+    parser = ReferenceParser()
+    citation = parser.parse(
+        "[2] Smith AB, Jones CD. Prediction models for structured publishing. "
+        "Journal of XML Methods 2024;12(3):101-109. "
+        "https://doi.org/10.1234/jxml.2024.001",
+        index=2,
+    )
+
+    assert citation["label"] == "[2]"
+    assert citation["authors"] == ["Smith AB", "Jones CD"]
+    assert citation["article_title"] == "Prediction models for structured publishing"
+    assert citation["source"] == "Journal of XML Methods"
+    assert citation["year"] == "2024"
+    assert citation["volume"] == "12"
+    assert citation["issue"] == "3"
+    assert citation["fpage"] == "101"
+    assert citation["lpage"] == "109"
+    assert citation["doi"] == "10.1234/jxml.2024.001"
+    assert citation["publication_type"] == "journal"
+
+
 def test_schema_validator_uses_local_rng(tmp_path: Path):
     rng = tmp_path / "jats-test.rng"
     rng.write_text(

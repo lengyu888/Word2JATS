@@ -29,6 +29,18 @@ class DocxParser:
     MULTI_PANEL_RE = re.compile(
         r"(?:\([A-Za-z]\s*[-\u2013]\s*[A-Za-z]\)|\bpanels?\b|\bplots?\b)", re.I
     )
+    CAPTION_CONTINUATION_RE = re.compile(
+        r"^\s*(?:"
+        r"(?:The\s+)?[xy]-axis\b|"
+        r"(?:Error\s+bars?|Bars?|Whiskers?|Dots?|Circles?|Squares?|Triangles?)\b|"
+        r"(?:Solid|Dashed|Dotted)\s+(?:line|curve|bar)s?\b|"
+        r"(?:Data|Values|Results)\s+(?:are|were|represent|show)\b|"
+        r"(?:Panels?|Plots?)\s+[A-Z](?:\s*[-\u2013]\s*[A-Z])?\b|"
+        r"(?:Note|Notes|Abbreviations?)\s*[:.]|"
+        r"[\*\u2020\u2021]\s+"
+        r")",
+        re.I,
+    )
     SECTION_PATTERNS = (
         re.compile(r"^(\d+(?:\.\d+)*\.?)\s+(.+)$"),
         re.compile(r"^(\d+(?:\.\d+)*)[\s、.]+(.+)$"),
@@ -122,6 +134,7 @@ class DocxParser:
         pending_figures: list[int] = []
         unbound_tables: list[int] = []
         pending_tables: list[int] = []
+        last_caption_target: tuple[str, int, int] | None = None
 
         for node in flow:
             if node["flow_index"] in skipped:
@@ -135,6 +148,7 @@ class DocxParser:
 
             if node_type == "image":
                 in_abstract = False
+                last_caption_target = None
                 pending_index = self._pop_in_section(
                     pending_figures, article["figures"], current_section_index
                 )
@@ -165,6 +179,7 @@ class DocxParser:
 
             if node_type == "table":
                 in_abstract = False
+                last_caption_target = None
                 pending_index = self._pop_in_section(
                     pending_tables, article["tables"], current_section_index
                 )
@@ -319,6 +334,7 @@ class DocxParser:
                     article["figures"][unbound_index]["_caption_flow_index"] = node[
                         "flow_index"
                     ]
+                    caption_index = unbound_index
                 else:
                     article["figures"].append({
                         "id": f"fig{len(article['figures']) + 1}",
@@ -328,6 +344,8 @@ class DocxParser:
                         "_caption_flow_index": node["flow_index"],
                     })
                     pending_figures.append(len(article["figures"]) - 1)
+                    caption_index = len(article["figures"]) - 1
+                last_caption_target = ("figure", caption_index, current_section_index)
                 continue
             if node_type == "table_caption":
                 in_abstract = False
@@ -339,6 +357,7 @@ class DocxParser:
                     article["tables"][unbound_index]["_caption_flow_index"] = node[
                         "flow_index"
                     ]
+                    caption_index = unbound_index
                 else:
                     article["tables"].append({
                         "id": f"tab{len(article['tables']) + 1}",
@@ -348,6 +367,14 @@ class DocxParser:
                         "_caption_flow_index": node["flow_index"],
                     })
                     pending_tables.append(len(article["tables"]) - 1)
+                    caption_index = len(article["tables"]) - 1
+                last_caption_target = ("table", caption_index, current_section_index)
+                continue
+
+            if self._is_caption_continuation(
+                text, node_type, current_section_index, last_caption_target, article
+            ):
+                self._append_caption_continuation(article, last_caption_target, text)
                 continue
 
             if (
@@ -360,11 +387,13 @@ class DocxParser:
                 and not text.lstrip().startswith(("\u25cf", "\u2022"))
             ):
                 current_section["paragraphs"].append(text)
+                last_caption_target = None
                 continue
 
             section = self._parse_section_title(text, node)
             if section:
                 in_abstract = False
+                last_caption_target = None
                 if text.lstrip().startswith(("●", "•")) and current_section:
                     section["level"] = min(
                         6, int(current_section.get("level", 1)) + 1
@@ -379,6 +408,7 @@ class DocxParser:
                 continue
 
             if node_type == "list":
+                last_caption_target = None
                 item = self.LIST_RE.sub("", text, count=1).strip()
                 article["lists"].append({
                     "id": f"list{len(article['lists']) + 1}",
@@ -387,6 +417,7 @@ class DocxParser:
                 })
                 continue
             if node_type == "formula":
+                last_caption_target = None
                 article["formulas"].append({
                     "id": f"eq{len(article['formulas']) + 1}",
                     "content": text,
@@ -407,6 +438,7 @@ class DocxParser:
                 continue
             if current_section is not None and text:
                 current_section["paragraphs"].append(text)
+                last_caption_target = None
 
         article["abstract"] = "\n".join(abstract_parts)
 
@@ -489,6 +521,51 @@ class DocxParser:
     def _caption_number(text: str) -> str:
         match = re.search(r"\d+(?:[-.]\d+)?[a-z]?", text, re.I)
         return match.group(0).casefold() if match else ""
+
+    def _is_caption_continuation(
+        self,
+        text: str,
+        node_type: str,
+        current_section_index: int,
+        target: tuple[str, int, int] | None,
+        article: dict[str, Any],
+    ) -> bool:
+        if not target or not text or node_type not in {"paragraph", "heading"}:
+            return False
+        object_type, index, section_index = target
+        if section_index != current_section_index or len(text) > 700:
+            return False
+        collection_name = "figures" if object_type == "figure" else "tables"
+        collection = article.get(collection_name, [])
+        if index >= len(collection) or not collection[index].get("caption"):
+            return False
+        if self._parse_section_title(text, {"type": node_type}):
+            return False
+        if self._matches_any(self.figure_patterns, text) or self._matches_any(
+            self.table_patterns, text
+        ):
+            return False
+        if self.FIGURE_RE.match(text) or self.TABLE_RE.match(text):
+            return False
+        return bool(
+            self.CAPTION_CONTINUATION_RE.match(text)
+            or text.startswith(("注:", "注：", "说明:", "说明："))
+        )
+
+    @staticmethod
+    def _append_caption_continuation(
+        article: dict[str, Any], target: tuple[str, int, int] | None, text: str
+    ) -> None:
+        if not target:
+            return
+        object_type, index, _ = target
+        collection_name = "figures" if object_type == "figure" else "tables"
+        collection = article.get(collection_name, [])
+        if index >= len(collection):
+            return
+        caption = collection[index].get("caption", "").rstrip()
+        separator = " " if caption and not caption.endswith(("\n", " ")) else ""
+        collection[index]["caption"] = f"{caption}{separator}{text.strip()}"
 
     def _annotate_structure_evidence(self, article: dict[str, Any]) -> None:
         for object_type, collection in (
