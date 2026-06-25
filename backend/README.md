@@ -75,16 +75,6 @@ python evaluate_official_samples.py
 
 报告输出到 `docs/官方样例对比报告.md`，并将源文档可恢复问题与 DOI、期刊 ID 等出版方补录字段分开列示。
 
-`sample_documents/` 目录仅用于自动化回归测试和本地开发验证，不再作为前端默认一键演示数据。
-
-全流程验收稿可重新生成：
-
-```bash
-python scripts/generate_sample_docx.py
-```
-
-后端集成测试会验证回归文档的结构数量、MathML 状态、JATS 标签、文档流映射、图表预览，以及人工补齐出版元数据后的正式 Schema 通过状态。
-
 ## OMML 能力矩阵
 
 | Office Math 结构 | MathML | LaTeX | 状态 |
@@ -119,7 +109,7 @@ python evaluate_official_samples.py
 
 `evaluate_official_samples.py` 使用 `样例-最新版` 中的竞赛官方 Word/XML 样例，输出官方对比报告并执行 94/90/100% 防回归门槛。项目评测入口统一为官方样例评测，避免多套评测口径混用。
 
-指标包括标题、摘要、关键词、章节、图表绑定、公式、参考文献、交叉引用、XML 合法率、原始 Schema 通过率、人工校正后 Schema 通过率和平均耗时。
+指标包括元数据、章节结构、图表、公式、参考文献、交叉引用、XML 合规性、JATS 1.3 DTD 通过率，以及源文档可恢复差异和出版方补录差异。
 
 ## ZIP 结果包
 

@@ -45,15 +45,6 @@ python evaluate_official_samples.py
 
 图表与公式对象会返回 `confidence`、`status`、`evidence` 和 `issues`。图表匹配综合章节、文档流距离、编号与对象类型，支持保守识别图片化表格；歧义对象标记为 `need_review`。正文和原生表格单元格中的引用只有在目标 ID 真实存在时才生成 `<xref>`，缺失目标保留原文并进入校验与质量报告。
 
-`sample_documents/` 目录仅保留为自动化回归测试材料，不再作为前端默认一键演示数据。
-
-重新生成：
-
-```bash
-cd backend
-python scripts/generate_sample_docx.py
-```
-
 ## 一键启动
 
 先启动 Docker Desktop，然后在项目根目录执行：
