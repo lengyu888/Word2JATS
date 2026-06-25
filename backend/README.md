@@ -67,7 +67,7 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 
 `/api/demo-documents` 默认返回上述 5 篇官方样例，并为重复的 `初始文件.docx` 生成唯一展示名。`/api/convert` 和 `/api/batch-convert` 对这些展示名会自动匹配同目录官方 XML，返回 `official_comparison`。语义指标 V2 对元数据、章节、图表、公式、参考文献、交叉引用和 XML 合规性分别评分，不使用全局标签计数替代转换质量。
 
-当前五篇官方样例自动转换结果为：平均相似度 **93%**、最低单篇 **89%**、JATS 1.3 DTD 通过率 **100%**。比较器额外输出图表数量、题注、章节归属和公式数量、内容、章节归属等细分指标；命令默认执行 93/88/100% 防回归门槛。图表候选匹配器会综合章节、文档流距离、编号和对象类型识别图片化表格，JATS 生成器也会恢复 Word 原生表格单元格内的有效交叉引用。运行以下命令可重新评测：
+当前五篇官方样例自动转换结果为：平均相似度 **94.4%**、最低单篇 **90%**、JATS 1.3 DTD 通过率 **100%**。比较器额外输出图表数量、题注、章节归属和公式数量、内容、章节归属等细分指标；命令默认执行 94/90/100% 防回归门槛。图表候选匹配器会综合章节、文档流距离、编号和对象类型识别图片化表格，JATS 生成器也会恢复 Word 原生表格单元格内的有效交叉引用。运行以下命令可重新评测：
 
 ```bash
 python evaluate_official_samples.py
@@ -114,11 +114,10 @@ python scripts/generate_sample_docx.py
 
 ```bash
 python -m pytest -q
-python evaluate.py
 python evaluate_official_samples.py
 ```
 
-`evaluate.py` 在系统临时目录按需生成 30 篇分层合成 Word，评测完成后自动删除。仓库保留 Golden JSON、manifest、评测报告、官方样例映射说明和本地回归文档，不长期保存 30 篇评测 DOCX。
+`evaluate_official_samples.py` 使用 `样例-最新版` 中的竞赛官方 Word/XML 样例，输出官方对比报告并执行 94/90/100% 防回归门槛。项目评测入口统一为官方样例评测，避免多套评测口径混用。
 
 指标包括标题、摘要、关键词、章节、图表绑定、公式、参考文献、交叉引用、XML 合法率、原始 Schema 通过率、人工校正后 Schema 通过率和平均耗时。
 

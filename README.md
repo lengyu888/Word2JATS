@@ -36,7 +36,7 @@ Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统直�
 
 前端点击“一键加载官方样例”后，会通过 `/api/demo-documents` 获取官方样例清单，下载唯一展示名的 DOCX，并调用现有批量转换流程。每个转换结果会返回 `official_comparison`。语义指标 V2 分别评价元数据、章节结构、图表、公式、参考文献、交叉引用和 XML 合规性，并区分“源文档可恢复差异”与 DOI、期刊 ID 等“出版方补录差异”。旧接口 `/api/demo-document` 继续保留，用于兼容单篇演示稿调用方。
 
-当前五篇官方样例自动转换结果：平均语义相似度 **93%**，最低单篇 **89%**，JATS Publishing 1.3 MathML3 DTD 通过率 **100%**。评测同时细分图表数量、题注、章节归属，以及公式数量、内容和章节归属；默认验收门槛为平均不低于 93%、单篇不低于 88%、DTD 通过率 100%。可通过以下命令复现并更新 `docs/官方样例对比报告.md`：
+当前五篇官方样例自动转换结果：平均语义相似度 **94.4%**，最低单篇 **90%**，JATS Publishing 1.3 MathML3 DTD 通过率 **100%**。评测同时细分图表数量、题注、章节归属，以及公式数量、内容和章节归属；默认验收门槛为平均不低于 94%、单篇不低于 90%、DTD 通过率 100%。可通过以下命令复现并更新 `docs/官方样例对比报告.md`：
 
 ```bash
 cd backend
@@ -89,7 +89,7 @@ npm run dev
 ```bash
 cd backend
 python -m pytest -q
-python evaluate.py
+python evaluate_official_samples.py
 ```
 
 ```bash
@@ -97,11 +97,9 @@ cd frontend
 npm run build
 ```
 
-`evaluate.py` 会在系统临时目录生成六类、共 30 篇分层合成评测语料，完成评测后自动清理，不会在 `sample_documents` 中堆积 DOCX。Golden JSON 与评测清单位于 `backend/evaluation/`，报告输出到：
+`evaluate_official_samples.py` 使用 `样例-最新版` 中的竞赛官方 Word/XML 样例进行评测，输出系统生成 XML 与官方 XML 的语义相似度、分项质量和 JATS 1.3 DTD 通过率。报告输出到：
 
-- `docs/评测报告.md`
-- `docs/消融实验报告.md`
-- `docs/错误案例分析.md`
+- `docs/官方样例对比报告.md`
 
 ## 使用流程
 
@@ -120,7 +118,7 @@ npm run build
 3. 展示文档流对照、图表预览、OMML 转换和正文交叉引用恢复。
 4. 展示质量总分、分项得分、问题定位和修复建议。
 5. 在人工校正页补充出版元数据，重新生成 XML 并展示 Schema 状态变化。
-6. 下载 ZIP 交付包，最后展示自动生成的 30 篇评测与消融实验报告。
+6. 下载 ZIP 交付包，最后展示官方样例对比报告。
 
 ## API
 
