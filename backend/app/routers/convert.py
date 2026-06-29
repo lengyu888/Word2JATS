@@ -38,8 +38,11 @@ visual_preview_builder = VisualPreviewBuilder()
 SAMPLE_ROOT = Path(__file__).resolve().parents[3] / "sample_documents"
 OFFICIAL_SAMPLE_ROOT = Path(__file__).resolve().parents[3] / "样例-最新版"
 DEMO_DOCUMENT_NAMES = (
-    "word2jats_final_acceptance.docx",
-    "真实参考论文.docx",
+    "样例1.docx",
+    "样例2.docx",
+    "样例3.docx",
+    "样例4.docx",
+    "样例5.docx",
 )
 OFFICIAL_DEMO_SAMPLES = (
     {

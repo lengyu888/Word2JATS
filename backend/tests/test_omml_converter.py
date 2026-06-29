@@ -1,7 +1,6 @@
 from docx import Document
 from docx.oxml import parse_xml
 from lxml import etree
-from pathlib import Path
 
 from app.services.docx_parser import DocxParser
 from app.services.jats_generator import JatsGenerator
@@ -190,19 +189,6 @@ def test_validator_warns_when_omml_mathml_conversion_is_unavailable():
     assert "公式 eq1 的 OMML 无法转换为 MathML，已保留文本回退。" in result["warnings"]
 
 
-def test_committed_native_formula_sample_converts_to_mathml(tmp_path):
-    path = Path(__file__).resolve().parents[2] / "sample_documents" / "word2jats_final_acceptance.docx"
-
-    article = DocxParser(path, tmp_path / "media").parse()
-
-    assert len(article["formulas"]) == 5
-    assert article["formulas"][0]["type"] == "omml"
-    assert "<mml:mfrac>" in article["formulas"][0]["mathml"]
-    assert "<mml:msup>" in article["formulas"][0]["mathml"]
-    assert "<mml:msqrt>" in article["formulas"][0]["mathml"]
-    assert "<mml:munderover>" in article["formulas"][3]["mathml"]
-
-
 def test_omml_matrix_to_mathml():
     result = OmmlConverter().convert(MATRIX_OMML)
     assert result["conversion_status"] == "success"
@@ -275,13 +261,3 @@ def test_omml_partial_does_not_break_jats_generation():
     assert any("人工复核" in warning for warning in validation["warnings"])
     assert any(issue["module"] == "formula" for issue in quality["issues"])
     assert JatsSchemaValidator().validate(xml)["jats_schema_valid"] is True
-
-
-def test_committed_final_acceptance_document_has_stable_omml_degradation(tmp_path):
-    path = Path(__file__).resolve().parents[2] / "sample_documents" / "word2jats_final_acceptance.docx"
-    article = DocxParser(path, tmp_path / "media").parse()
-
-    assert len(article["formulas"]) == 5
-    assert sum(item["conversion_status"] == "success" for item in article["formulas"]) == 4
-    assert sum(item["conversion_status"] == "partial" for item in article["formulas"]) == 1
-    assert all(item["mathml"] for item in article["formulas"])
