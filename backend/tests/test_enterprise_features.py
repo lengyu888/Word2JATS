@@ -59,6 +59,57 @@ def test_reference_parser_extracts_compact_english_journal_tail():
     assert citation["publication_type"] == "journal"
 
 
+def test_reference_parser_extracts_period_separated_journal_tail_and_doi_url():
+    parser = ReferenceParser()
+    citation = parser.parse(
+        "[3] Brown EF, Green GH. Neural fatigue detection using EEG. "
+        "Brain Monitoring Journal. 2025;18(2):44-52. "
+        "doi: https://doi.org/10.5678/bmj.2025.002",
+        index=3,
+    )
+
+    assert citation["authors"] == ["Brown EF", "Green GH"]
+    assert citation["article_title"] == "Neural fatigue detection using EEG"
+    assert citation["source"] == "Brain Monitoring Journal"
+    assert citation["year"] == "2025"
+    assert citation["volume"] == "18"
+    assert citation["issue"] == "2"
+    assert citation["fpage"] == "44"
+    assert citation["lpage"] == "52"
+    assert citation["doi"] == "10.5678/bmj.2025.002"
+    assert citation["publication_type"] == "journal"
+
+
+def test_reference_parser_extracts_comma_separated_journal_reference():
+    parser = ReferenceParser()
+    citation = parser.parse(
+        "[4] Faggiano P, Dasseni N, Gaibazzi N, Rossi A, Henein M, Pressman G, "
+        "Cardiac calcification as a marker of subclinical atherosclerosis and predictor "
+        "of cardiovascular events: A review of the evidence, European Journal of "
+        "Preventive Cardiology, 26 (2019) 1191-1204.",
+        index=4,
+    )
+
+    assert citation["authors"] == [
+        "Faggiano P",
+        "Dasseni N",
+        "Gaibazzi N",
+        "Rossi A",
+        "Henein M",
+        "Pressman G",
+    ]
+    assert citation["article_title"] == (
+        "Cardiac calcification as a marker of subclinical atherosclerosis and predictor "
+        "of cardiovascular events: A review of the evidence"
+    )
+    assert citation["source"] == "European Journal of Preventive Cardiology"
+    assert citation["year"] == "2019"
+    assert citation["volume"] == "26"
+    assert citation["fpage"] == "1191"
+    assert citation["lpage"] == "1204"
+    assert citation["publication_type"] == "journal"
+
+
 def test_schema_validator_uses_local_rng(tmp_path: Path):
     rng = tmp_path / "jats-test.rng"
     rng.write_text(
@@ -128,6 +179,27 @@ def test_generator_emits_element_citation_for_structured_reference():
     assert '<element-citation publication-type="journal">' in xml
     assert "<article-title>Structured publishing</article-title>" in xml
     assert '<pub-id pub-id-type="doi">10.1234/demo.1</pub-id>' in xml
+
+
+def test_generator_preserves_mixed_citation_for_structured_reference():
+    article = {
+        "title": "References", "abstract": "Abstract", "keywords": ["a", "b", "c"],
+        "sections": [{"title": "Intro", "paragraphs": ["Text"]}],
+        "authors": [], "affiliations": [], "figures": [], "tables": [],
+        "formulas": [], "lists": [],
+        "references": [{
+            "id": "ref1", "label": "[1]",
+            "raw": "Zhang S. Structured publishing. Journal of XML. 2025;12:10-18.",
+            "mixed_citation": "Zhang S. Structured publishing. Journal of XML. 2025;12:10-18.",
+            "authors": ["Zhang S"], "article_title": "Structured publishing",
+            "source": "Journal of XML", "year": "2025", "publication_type": "journal",
+        }],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert "<mixed-citation>Zhang S. Structured publishing." in xml
+    assert '<element-citation publication-type="journal">' in xml
 
 
 def test_quality_scorer_returns_scores_and_located_issues():

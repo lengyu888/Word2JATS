@@ -36,6 +36,7 @@ class ArticleTable(BaseModel):
     id: str
     caption: str = ""
     rows: list[list[str]] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
     section_index: int = -1
     section_id: str = ""
     section_title: str = ""

@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from lxml import etree
@@ -43,16 +44,22 @@ class JatsGenerator:
         body = etree.SubElement(root, "body")
         section_elements = []
         section_stack: list[tuple[int, Any]] = []
+        top_level_counter = 0
         for section_index, section in enumerate(article["sections"], start=1):
             level = max(1, int(section.get("level", 1) or 1))
+            if level == 1:
+                top_level_counter += 1
             while section_stack and section_stack[-1][0] >= level:
                 section_stack.pop()
             parent = section_stack[-1][1] if section_stack else body
             sec = etree.SubElement(parent, "sec", id=f"sec{section_index}")
             sec.set("sec-type", f"level-{level}")
-            if section.get("label"):
-                etree.SubElement(sec, "label").text = section["label"]
-            etree.SubElement(sec, "title").text = section["title"]
+            label, title = self._section_label_and_title(
+                section, level, top_level_counter
+            )
+            if label:
+                etree.SubElement(sec, "label").text = label
+            etree.SubElement(sec, "title").text = title
             for paragraph in section.get("paragraphs", []):
                 self._append_body_paragraph(sec, paragraph)
             section_elements.append(sec)
@@ -126,6 +133,16 @@ class JatsGenerator:
                     "graphic",
                     attrib={self.XLINK_HREF: table_data["path"]},
                 )
+            if table_data.get("notes"):
+                table_wrap_foot = etree.SubElement(table_wrap, "table-wrap-foot")
+                for note_index, note in enumerate(table_data.get("notes", []), start=1):
+                    footnote = etree.SubElement(table_wrap_foot, "fn", id=f"{table_wrap.get('id')}-fn{note_index}")
+                    paragraph = etree.SubElement(footnote, "p")
+                    self.xref_resolver.append_mixed_content(
+                        paragraph,
+                        str(note),
+                        allowed_ids=self._allowed_xref_ids,
+                    )
         for list_data in article["lists"]:
             parent = self._parent_for(list_data, section_elements, fallback)
             list_element = self._floating_element(parent, "list", id=list_data["id"])
@@ -167,6 +184,9 @@ class JatsGenerator:
                 ref = etree.SubElement(ref_list, "ref", id=reference.get("id") or f"ref{index}")
                 etree.SubElement(ref, "label").text = reference.get("label") or f"[{index}]"
                 if self._has_structured_reference(reference):
+                    mixed = reference.get("mixed_citation") or reference.get("raw", "")
+                    if mixed:
+                        etree.SubElement(ref, "mixed-citation").text = mixed
                     self._build_element_citation(ref, reference)
                 else:
                     etree.SubElement(ref, "mixed-citation").text = (
@@ -224,7 +244,7 @@ class JatsGenerator:
                         attrib={"ref-type": "aff", "rid": affiliation_id},
                     )
         for index, affiliation in enumerate(article["affiliations"], start=1):
-            etree.SubElement(meta, "aff", id=f"aff{index}").text = affiliation
+            self._build_affiliation(meta, affiliation, index)
         if any(article.get(field) for field in ("pub_year", "pub_month", "pub_day")):
             pub_date = etree.SubElement(meta, "pub-date", attrib={"publication-format": "electronic"})
             if article.get("pub_day"):
@@ -239,6 +259,37 @@ class JatsGenerator:
             keywords = etree.SubElement(meta, "kwd-group")
             for keyword in article["keywords"]:
                 etree.SubElement(keywords, "kwd").text = keyword
+
+    @staticmethod
+    def _build_affiliation(parent: Any, affiliation: str, index: int) -> None:
+        aff = etree.SubElement(parent, "aff", id=f"aff{index}")
+        text = str(affiliation or "").strip()
+        label_match = re.match(
+            r"^(?P<label>\d+|[a-z])[\s.)、:：-]+(?P<body>.+)$",
+            text,
+            re.I,
+        )
+        label_text = label_match.group("label") if label_match else str(index)
+        body_text = label_match.group("body").strip() if label_match else text
+        label = etree.SubElement(aff, "label")
+        label.text = label_text
+        label.tail = f" {body_text}" if body_text else ""
+
+    @staticmethod
+    def _section_label_and_title(
+        section: dict[str, Any], level: int, top_level_counter: int
+    ) -> tuple[str, str]:
+        explicit = str(section.get("label") or "").strip()
+        title = str(section.get("title") or "").strip()
+        if explicit:
+            title = re.sub(rf"^{re.escape(explicit)}[\s.)、:：-]*", "", title).strip()
+            return explicit, title
+        numbered = re.match(r"^(?P<label>\d+(?:\.\d+)*\.?)\s+(?P<title>.+)$", title)
+        if numbered:
+            return numbered.group("label"), numbered.group("title").strip()
+        if level == 1:
+            return f"{top_level_counter}.", title
+        return "", title
 
     @staticmethod
     def _split_name(name: str) -> tuple[str, str]:

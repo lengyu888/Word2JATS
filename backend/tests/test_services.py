@@ -136,7 +136,8 @@ def test_generator_produces_parseable_jats():
     assert '<disp-formula id="eq1">' in xml
     assert "<![CDATA[E = mc²]]>" in xml
     assert '<xref ref-type="aff" rid="aff1"/>' in xml
-    assert '<aff id="aff1">测试大学</aff>' in xml
+    assert '<aff id="aff1">' in xml
+    assert "<label>1</label> 测试大学" in xml
     assert result["passed"] is True
 
 
@@ -212,6 +213,69 @@ def test_generator_builds_labeled_reference_list():
     assert "<mixed-citation>First citation.</mixed-citation>" in xml
 
 
+def test_generator_adds_affiliation_labels_when_text_has_no_label():
+    article = {
+        "title": "Affiliation labels",
+        "authors": [{"name": "Alice Smith", "orcid": "", "affiliation_ids": ["aff1"]}],
+        "affiliations": ["Faculty of Medicine, University of Antwerp, 2650 Antwerp"],
+        "abstract": "Abstract",
+        "keywords": ["JATS", "affiliation", "metadata"],
+        "sections": [{"title": "Introduction", "level": 1, "paragraphs": ["Body"]}],
+        "figures": [], "tables": [], "lists": [], "formulas": [], "references": [],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert '<aff id="aff1">' in xml
+    assert "<label>1</label>" in xml
+    assert "Faculty of Medicine, University of Antwerp" in xml
+
+
+def test_generator_adds_labels_for_unnumbered_top_level_sections():
+    article = {
+        "title": "Section labels",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "Abstract",
+        "keywords": ["JATS", "section", "labels"],
+        "sections": [
+            {"title": "Introduction", "level": 1, "paragraphs": ["Intro"]},
+            {"title": "Methods", "level": 1, "paragraphs": ["Methods"]},
+        ],
+        "figures": [], "tables": [], "lists": [], "formulas": [], "references": [],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert "<label>1.</label>" in xml
+    assert "<title>Introduction</title>" in xml
+    assert "<label>2.</label>" in xml
+    assert "<title>Methods</title>" in xml
+
+
+def test_generator_splits_numbered_section_titles_into_label_and_title():
+    article = {
+        "title": "Numbered sections",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "Abstract",
+        "keywords": ["JATS", "section", "labels"],
+        "sections": [
+            {"title": "1. Introduction", "level": 1, "paragraphs": ["Intro"]},
+            {"title": "1.1 Study Design", "level": 2, "paragraphs": ["Design"]},
+        ],
+        "figures": [], "tables": [], "lists": [], "formulas": [], "references": [],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert "<label>1.</label>" in xml
+    assert "<title>Introduction</title>" in xml
+    assert "<label>1.1</label>" in xml
+    assert "<title>Study Design</title>" in xml
+    assert "<title>1. Introduction</title>" not in xml
+
+
 def test_generator_builds_jats_publishing_metadata_and_affiliation_links():
     article = {
         "title": "JATS Publishing 测试",
@@ -254,8 +318,10 @@ def test_generator_builds_jats_publishing_metadata_and_affiliation_links():
     assert "<subject>数字出版</subject>" in xml
     assert '<xref ref-type="aff" rid="aff1"/>' in xml
     assert '<xref ref-type="aff" rid="aff2"/>' in xml
-    assert '<aff id="aff1">未来出版大学</aff>' in xml
-    assert '<aff id="aff2">智能出版研究院</aff>' in xml
+    assert '<aff id="aff1">' in xml
+    assert "<label>1</label> 未来出版大学" in xml
+    assert '<aff id="aff2">' in xml
+    assert "<label>2</label> 智能出版研究院" in xml
     assert '<pub-date publication-format="electronic">' in xml
     assert "<year>2026</year>" in xml
 
@@ -603,6 +669,38 @@ def test_generator_builds_jats_table_wrap():
     assert "<th>指标</th>" in xml
     assert "<tbody>" in xml
     assert "<td>95%</td>" in xml
+
+
+def test_generator_builds_table_wrap_foot_for_notes():
+    article = {
+        "title": "Table notes",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "Abstract",
+        "keywords": ["table", "JATS", "notes"],
+        "sections": [{"title": "Results", "level": 1, "paragraphs": ["Text"]}],
+        "figures": [],
+        "tables": [
+            {
+                "id": "tab1",
+                "caption": "Table 1. Baseline metrics",
+                "rows": [["Metric", "Value"], ["Accuracy", "95%"]],
+                "notes": ["Note: Values are shown as percentages."],
+                "section_index": 0,
+            }
+        ],
+        "lists": [],
+        "formulas": [],
+        "references": [],
+    }
+
+    root = etree.fromstring(JatsGenerator().generate(article).encode("utf-8"))
+    table_wrap = root.xpath("//*[local-name()='table-wrap']")[0]
+
+    assert table_wrap.xpath(
+        "string(./*[local-name()='table-wrap-foot']/*[local-name()='fn']/*[local-name()='p'])"
+    ) == "Note: Values are shown as percentages."
+    assert [etree.QName(child).localname for child in table_wrap][-1] == "table-wrap-foot"
 
 
 def test_generator_separates_float_labels_from_caption_text():

@@ -481,6 +481,7 @@ def test_native_table_notes_are_not_merged_into_caption(tmp_path):
     article = DocxParser(path, tmp_path / "media").parse()
 
     assert article["tables"][0]["caption"] == "Table 1. Baseline metrics"
+    assert article["tables"][0]["notes"] == [note]
     assert note in article["sections"][0]["paragraphs"]
 
 
@@ -542,7 +543,7 @@ def test_parent_section_floats_are_emitted_before_nested_sections():
     root = etree.fromstring(xml.encode("utf-8"))
 
     assert [child.tag for child in root.xpath("./body/sec[1]/*")] == [
-        "title", "p", "fig", "sec"
+        "label", "title", "p", "fig", "sec"
     ]
     assert ArticleValidator().schema_validator.validate(xml)["jats_schema_valid"] is True
 
@@ -596,6 +597,31 @@ def test_numbered_reference_continuation_is_merged(tmp_path):
 
     assert len(article["references"]) == 2
     assert "Journal of Examples" in article["references"][0]["raw"]
+
+
+def test_author_affiliation_marker_is_removed_from_name(tmp_path):
+    path = tmp_path / "author-marker.docx"
+    document = Document()
+    title = document.add_paragraph("Author Marker Test")
+    title.alignment = 1
+    title.runs[0].bold = True
+    document.add_paragraph("Alice Smith1, Bob Jones2")
+    document.add_paragraph("1 Department of Publishing, Demo University")
+    document.add_paragraph("2 School of XML, Demo University")
+    document.add_paragraph("Abstract: This is an abstract.")
+    document.add_paragraph("Keywords: JATS; DOCX; metadata")
+    document.add_paragraph("1 Introduction")
+    document.add_paragraph("Body.")
+    document.add_paragraph("References")
+    document.add_paragraph("[1] Example reference.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert [author["name"] for author in article["authors"]] == [
+        "Alice Smith",
+        "Bob Jones",
+    ]
 
 
 def test_unlabeled_author_year_reference_after_numbered_list_is_new_entry(tmp_path):

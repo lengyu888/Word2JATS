@@ -137,6 +137,7 @@ class DocxParser:
         pending_tables: list[int] = []
         last_caption_target: tuple[str, int, int] | None = None
         active_embedded_table_index: int | None = None
+        last_native_table_index: int | None = None
 
         for node in flow:
             if node["flow_index"] in skipped:
@@ -195,6 +196,7 @@ class DocxParser:
                         section_index=current_section_index,
                         _media_flow_index=node["flow_index"],
                     )
+                    last_native_table_index = pending_index
                     caption_flow_index = article["tables"][pending_index].get(
                         "_caption_flow_index"
                     )
@@ -226,7 +228,8 @@ class DocxParser:
                         "section_index": current_section_index,
                         "_media_flow_index": node["flow_index"],
                     })
-                    unbound_tables.append(len(article["tables"]) - 1)
+                    last_native_table_index = len(article["tables"]) - 1
+                    unbound_tables.append(last_native_table_index)
                 continue
 
             if self.REFERENCE_RE.match(text):
@@ -235,6 +238,7 @@ class DocxParser:
                 in_abstract = False
                 awaiting_keywords = False
                 active_embedded_table_index = None
+                last_native_table_index = None
                 continue
             if in_references:
                 if text:
@@ -277,6 +281,7 @@ class DocxParser:
                 in_abstract = False
                 in_publisher_back_matter = True
                 active_embedded_table_index = None
+                last_native_table_index = None
                 continue
             if in_publisher_back_matter:
                 continue
@@ -284,6 +289,7 @@ class DocxParser:
             if self.keyword_re.match(text):
                 in_abstract = False
                 active_embedded_table_index = None
+                last_native_table_index = None
                 keyword_text = self.keyword_re.sub("", text, count=1)
                 article["keywords"] = self._split_values(keyword_text)
                 awaiting_keywords = not bool(article["keywords"])
@@ -291,6 +297,7 @@ class DocxParser:
             if self.abstract_re.match(text):
                 in_abstract = True
                 active_embedded_table_index = None
+                last_native_table_index = None
                 abstract_text = self.abstract_re.sub("", text, count=1)
                 if abstract_text:
                     abstract_parts.append(abstract_text)
@@ -300,6 +307,7 @@ class DocxParser:
                 article["keywords"] = self._split_values(text)
                 awaiting_keywords = False
                 active_embedded_table_index = None
+                last_native_table_index = None
                 continue
 
             if (
@@ -308,6 +316,7 @@ class DocxParser:
             ):
                 in_abstract = False
                 active_embedded_table_index = None
+                last_native_table_index = None
                 continue
 
             if node_type == "figure_caption":
@@ -359,6 +368,7 @@ class DocxParser:
                     caption_index = len(article["figures"]) - 1
                 last_caption_target = ("figure", caption_index, current_section_index)
                 active_embedded_table_index = None
+                last_native_table_index = None
                 continue
             if node_type == "table_caption":
                 in_abstract = False
@@ -383,6 +393,7 @@ class DocxParser:
                     caption_index = len(article["tables"]) - 1
                 last_caption_target = ("table", caption_index, current_section_index)
                 active_embedded_table_index = None
+                last_native_table_index = None
                 continue
 
             if self._is_caption_continuation(
@@ -399,6 +410,9 @@ class DocxParser:
                 )
                 continue
 
+            if self._is_table_note(text, node_type, last_native_table_index, article):
+                article["tables"][last_native_table_index].setdefault("notes", []).append(text)
+
             if (
                 node_type == "heading"
                 and not str(node.get("style", "")).strip()
@@ -411,6 +425,7 @@ class DocxParser:
                 current_section["paragraphs"].append(text)
                 last_caption_target = None
                 active_embedded_table_index = None
+                last_native_table_index = None
                 continue
 
             section = self._parse_section_title(text, node)
@@ -418,6 +433,7 @@ class DocxParser:
                 in_abstract = False
                 last_caption_target = None
                 active_embedded_table_index = None
+                last_native_table_index = None
                 if text.lstrip().startswith(("●", "•")) and current_section:
                     section["level"] = min(
                         6, int(current_section.get("level", 1)) + 1
@@ -434,6 +450,7 @@ class DocxParser:
             if node_type == "list":
                 last_caption_target = None
                 active_embedded_table_index = None
+                last_native_table_index = None
                 item = self.LIST_RE.sub("", text, count=1).strip()
                 article["lists"].append({
                     "id": f"list{len(article['lists']) + 1}",
@@ -444,6 +461,7 @@ class DocxParser:
             if node_type == "formula":
                 last_caption_target = None
                 active_embedded_table_index = None
+                last_native_table_index = None
                 article["formulas"].append({
                     "id": f"eq{len(article['formulas']) + 1}",
                     "content": text,
@@ -466,6 +484,7 @@ class DocxParser:
                 current_section["paragraphs"].append(text)
                 last_caption_target = None
                 active_embedded_table_index = None
+                last_native_table_index = None
 
         article["abstract"] = "\n".join(abstract_parts)
 
@@ -645,6 +664,25 @@ class DocxParser:
             self._split_inline_table_row(text)
         )
         return table_index
+
+    @staticmethod
+    def _is_table_note(
+        text: str,
+        node_type: str,
+        table_index: int | None,
+        article: dict[str, Any],
+    ) -> bool:
+        if table_index is None or table_index >= len(article.get("tables", [])):
+            return False
+        if node_type not in {"paragraph", "heading"} or not text or len(text) > 800:
+            return False
+        table = article["tables"][table_index]
+        if not table.get("rows"):
+            return False
+        return bool(
+            re.match(r"^\s*(?:Note|Notes|Abbreviations?)\s*[:：.]", text, re.I)
+            or text.startswith(("注:", "注：", "说明:", "说明："))
+        )
 
     def _annotate_structure_evidence(self, article: dict[str, Any]) -> None:
         for object_type, collection in (
