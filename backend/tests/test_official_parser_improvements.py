@@ -424,6 +424,66 @@ def test_caption_continuation_lines_stay_with_float_caption(tmp_path):
     assert body_text in article["sections"][0]["paragraphs"]
 
 
+def test_figure_risk_table_and_late_caption_note_are_bound_to_figure(tmp_path):
+    image_path = tmp_path / "survival.png"
+    image_path.write_bytes(make_png((90, 90, 90)))
+    path = tmp_path / "figure-risk-table.docx"
+    document = Document()
+    title = document.add_paragraph("Figure Risk Table")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: JATS; XML; figures")
+    document.add_paragraph("1. Results")
+    document.add_paragraph("Figure 1: Kaplan-Meier survival by group")
+    document.add_picture(str(image_path), width=Inches(1))
+    document.add_paragraph("1 month   60 months   120 months")
+    document.add_paragraph("0    274  242  138")
+    document.add_paragraph("1    465  399  245")
+    note = "Cum survival: cumulative survival; FU (md): follow-up in months."
+    document.add_paragraph(note)
+    document.add_paragraph("References")
+    document.add_paragraph("[1] Example reference.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert note in article["figures"][0]["caption"]
+    assert article["tables"][-1]["caption"] == "patients at risk"
+    assert article["tables"][-1]["rows"] == [
+        ["1 month", "60 months", "120 months"],
+        ["0", "274", "242", "138"],
+        ["1", "465", "399", "245"],
+    ]
+
+
+def test_native_table_notes_are_not_merged_into_caption(tmp_path):
+    path = tmp_path / "table-note.docx"
+    document = Document()
+    title = document.add_paragraph("Table Note")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: JATS; XML; tables")
+    document.add_paragraph("1. Results")
+    document.add_paragraph("Table 1. Baseline metrics")
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Metric"
+    table.cell(0, 1).text = "Value"
+    table.cell(1, 0).text = "Accuracy"
+    table.cell(1, 1).text = "95%"
+    note = "Note: Values are shown as percentages."
+    document.add_paragraph(note)
+    document.add_paragraph("References")
+    document.add_paragraph("[1] Example reference.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["tables"][0]["caption"] == "Table 1. Baseline metrics"
+    assert note in article["sections"][0]["paragraphs"]
+
+
 def test_generator_nests_sections_by_level():
     article = {
         "title": "Nested Sections",

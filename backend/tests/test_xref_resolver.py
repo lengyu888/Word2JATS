@@ -165,6 +165,21 @@ def test_generator_resolves_bibliography_xrefs_inside_table_cells():
     assert cell[0].tail == "."
 
 
+def test_generator_resolves_xrefs_inside_captions():
+    article = build_article("Body text.")
+    article["figures"][0]["caption"] = "Figure 1. Summary compared with Table 1 and [1]."
+
+    xml = JatsGenerator().generate(article)
+    root = etree.fromstring(xml.encode("utf-8"))
+    caption = root.xpath("//fig/caption/p")[0]
+
+    assert caption.text == "Summary compared with "
+    assert [(item.get("ref-type"), item.get("rid"), item.text) for item in caption] == [
+        ("table", "tab1", "Table 1"),
+        ("bibr", "ref1", "[1]"),
+    ]
+
+
 def test_validator_reports_valid_and_unresolved_xrefs():
     article = build_article("见图1和图2，参考[1-4]。")
     xml = JatsGenerator().generate(article)

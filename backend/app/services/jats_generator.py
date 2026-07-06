@@ -69,7 +69,12 @@ class JatsGenerator:
                 normalized_caption["label"] or f"Fig. {index}"
             )
             caption = etree.SubElement(fig, "caption")
-            etree.SubElement(caption, "p").text = normalized_caption["caption"]
+            caption_paragraph = etree.SubElement(caption, "p")
+            self.xref_resolver.append_mixed_content(
+                caption_paragraph,
+                normalized_caption["caption"],
+                allowed_ids=self._allowed_xref_ids,
+            )
             paths = figure.get("paths") or ([figure["path"]] if figure.get("path") else [])
             for path in paths:
                 etree.SubElement(fig, "graphic", attrib={self.XLINK_HREF: path})
@@ -86,7 +91,12 @@ class JatsGenerator:
                 normalized_caption["label"] or f"Table {index}"
             )
             caption = etree.SubElement(table_wrap, "caption")
-            etree.SubElement(caption, "p").text = normalized_caption["caption"]
+            caption_paragraph = etree.SubElement(caption, "p")
+            self.xref_resolver.append_mixed_content(
+                caption_paragraph,
+                normalized_caption["caption"],
+                allowed_ids=self._allowed_xref_ids,
+            )
             rows = table_data.get("rows", [])
             if rows:
                 table = etree.SubElement(table_wrap, "table")

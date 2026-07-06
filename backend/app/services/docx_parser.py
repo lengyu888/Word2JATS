@@ -37,6 +37,7 @@ class DocxParser:
         r"(?:Data|Values|Results)\s+(?:are|were|represent|show)\b|"
         r"(?:Panels?|Plots?)\s+[A-Z](?:\s*[-\u2013]\s*[A-Z])?\b|"
         r"(?:Note|Notes|Abbreviations?)\s*[:.]|"
+        r"(?:[A-Z][A-Za-z0-9()/ -]{1,40})\s*:\s*[a-z]|"
         r"[\*\u2020\u2021]\s+"
         r")",
         re.I,
@@ -135,6 +136,7 @@ class DocxParser:
         unbound_tables: list[int] = []
         pending_tables: list[int] = []
         last_caption_target: tuple[str, int, int] | None = None
+        active_embedded_table_index: int | None = None
 
         for node in flow:
             if node["flow_index"] in skipped:
@@ -148,7 +150,9 @@ class DocxParser:
 
             if node_type == "image":
                 in_abstract = False
-                last_caption_target = None
+                if last_caption_target and last_caption_target[0] != "figure":
+                    last_caption_target = None
+                active_embedded_table_index = None
                 pending_index = self._pop_in_section(
                     pending_figures, article["figures"], current_section_index
                 )
@@ -179,7 +183,9 @@ class DocxParser:
 
             if node_type == "table":
                 in_abstract = False
-                last_caption_target = None
+                if last_caption_target and last_caption_target[0] == "table":
+                    last_caption_target = None
+                active_embedded_table_index = None
                 pending_index = self._pop_in_section(
                     pending_tables, article["tables"], current_section_index
                 )
@@ -228,6 +234,7 @@ class DocxParser:
                 in_publisher_back_matter = False
                 in_abstract = False
                 awaiting_keywords = False
+                active_embedded_table_index = None
                 continue
             if in_references:
                 if text:
@@ -269,18 +276,21 @@ class DocxParser:
             if self._is_publisher_back_heading(text) and current_section is not None:
                 in_abstract = False
                 in_publisher_back_matter = True
+                active_embedded_table_index = None
                 continue
             if in_publisher_back_matter:
                 continue
 
             if self.keyword_re.match(text):
                 in_abstract = False
+                active_embedded_table_index = None
                 keyword_text = self.keyword_re.sub("", text, count=1)
                 article["keywords"] = self._split_values(keyword_text)
                 awaiting_keywords = not bool(article["keywords"])
                 continue
             if self.abstract_re.match(text):
                 in_abstract = True
+                active_embedded_table_index = None
                 abstract_text = self.abstract_re.sub("", text, count=1)
                 if abstract_text:
                     abstract_parts.append(abstract_text)
@@ -289,6 +299,7 @@ class DocxParser:
             if awaiting_keywords and text:
                 article["keywords"] = self._split_values(text)
                 awaiting_keywords = False
+                active_embedded_table_index = None
                 continue
 
             if (
@@ -296,6 +307,7 @@ class DocxParser:
                 and self._normalized_heading(text) in self.PRE_BODY_HEADINGS
             ):
                 in_abstract = False
+                active_embedded_table_index = None
                 continue
 
             if node_type == "figure_caption":
@@ -346,6 +358,7 @@ class DocxParser:
                     pending_figures.append(len(article["figures"]) - 1)
                     caption_index = len(article["figures"]) - 1
                 last_caption_target = ("figure", caption_index, current_section_index)
+                active_embedded_table_index = None
                 continue
             if node_type == "table_caption":
                 in_abstract = False
@@ -369,12 +382,21 @@ class DocxParser:
                     pending_tables.append(len(article["tables"]) - 1)
                     caption_index = len(article["tables"]) - 1
                 last_caption_target = ("table", caption_index, current_section_index)
+                active_embedded_table_index = None
                 continue
 
             if self._is_caption_continuation(
                 text, node_type, current_section_index, last_caption_target, article
             ):
                 self._append_caption_continuation(article, last_caption_target, text)
+                continue
+
+            if self._is_embedded_figure_table_row(
+                text, node_type, current_section_index, last_caption_target
+            ):
+                active_embedded_table_index = self._append_embedded_figure_table_row(
+                    article, active_embedded_table_index, current_section_index, text
+                )
                 continue
 
             if (
@@ -388,12 +410,14 @@ class DocxParser:
             ):
                 current_section["paragraphs"].append(text)
                 last_caption_target = None
+                active_embedded_table_index = None
                 continue
 
             section = self._parse_section_title(text, node)
             if section:
                 in_abstract = False
                 last_caption_target = None
+                active_embedded_table_index = None
                 if text.lstrip().startswith(("●", "•")) and current_section:
                     section["level"] = min(
                         6, int(current_section.get("level", 1)) + 1
@@ -409,6 +433,7 @@ class DocxParser:
 
             if node_type == "list":
                 last_caption_target = None
+                active_embedded_table_index = None
                 item = self.LIST_RE.sub("", text, count=1).strip()
                 article["lists"].append({
                     "id": f"list{len(article['lists']) + 1}",
@@ -418,6 +443,7 @@ class DocxParser:
                 continue
             if node_type == "formula":
                 last_caption_target = None
+                active_embedded_table_index = None
                 article["formulas"].append({
                     "id": f"eq{len(article['formulas']) + 1}",
                     "content": text,
@@ -439,6 +465,7 @@ class DocxParser:
             if current_section is not None and text:
                 current_section["paragraphs"].append(text)
                 last_caption_target = None
+                active_embedded_table_index = None
 
         article["abstract"] = "\n".join(abstract_parts)
 
@@ -566,6 +593,58 @@ class DocxParser:
         caption = collection[index].get("caption", "").rstrip()
         separator = " " if caption and not caption.endswith(("\n", " ")) else ""
         collection[index]["caption"] = f"{caption}{separator}{text.strip()}"
+
+    def _is_embedded_figure_table_row(
+        self,
+        text: str,
+        node_type: str,
+        current_section_index: int,
+        target: tuple[str, int, int] | None,
+    ) -> bool:
+        if not target or not text or node_type not in {"paragraph", "heading"}:
+            return False
+        object_type, _, section_index = target
+        if object_type != "figure" or section_index != current_section_index:
+            return False
+        if len(text) > 220 or self.FIGURE_RE.match(text) or self.TABLE_RE.match(text):
+            return False
+        cells = self._split_inline_table_row(text)
+        if len(cells) < 3:
+            return False
+        numeric_cells = sum(bool(re.search(r"\d", cell)) for cell in cells)
+        lower = text.casefold()
+        is_time_header = "month" in lower and numeric_cells >= 2
+        is_numeric_row = bool(re.match(r"^\s*[\d<>=+-]+(?:\s+|$)", text)) and numeric_cells >= 3
+        return is_time_header or is_numeric_row
+
+    @staticmethod
+    def _split_inline_table_row(text: str) -> list[str]:
+        cells = [cell.strip() for cell in re.split(r"\s{2,}", text) if cell.strip()]
+        if len(cells) >= 3:
+            return cells
+        if re.fullmatch(r"[\d\s<>=+.\-–—%]+", text):
+            return [cell.strip() for cell in text.split() if cell.strip()]
+        return cells
+
+    def _append_embedded_figure_table_row(
+        self,
+        article: dict[str, Any],
+        table_index: int | None,
+        section_index: int,
+        text: str,
+    ) -> int:
+        if table_index is None or table_index >= len(article["tables"]):
+            article["tables"].append({
+                "id": f"tab{len(article['tables']) + 1}",
+                "caption": "patients at risk",
+                "rows": [],
+                "section_index": section_index,
+            })
+            table_index = len(article["tables"]) - 1
+        article["tables"][table_index].setdefault("rows", []).append(
+            self._split_inline_table_row(text)
+        )
+        return table_index
 
     def _annotate_structure_evidence(self, article: dict[str, Any]) -> None:
         for object_type, collection in (
