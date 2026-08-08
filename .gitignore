@@ -20,3 +20,12 @@ backend/temp/
 .DS_Store
 Thumbs.db
 ~$*.docx
+
+# Local-only release deliverables and reference material
+/JATSv1.3 完整手册.pdf
+/docs/Word2JATS技术方案说明书.docx
+/docs/Word2JATS技术方案说明书.pdf
+/release/*.tar
+/release/*.zip
+/scripts/generate_technical_solution_docx.py
+/scripts/generate_technical_solution_pdf.py

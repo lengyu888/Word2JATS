@@ -1,5 +1,6 @@
 import mimetypes
 import re
+import time
 from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
@@ -14,6 +15,7 @@ from app.models.schema import (
     ExportPackageRequest,
     GenerateXmlRequest,
     GenerateXmlResponse,
+    ProcessingStats,
 )
 from app.services.docx_parser import DocxParser
 from app.services.flow_view_builder import FlowViewBuilder
@@ -98,7 +100,31 @@ def _generate_outputs(article: dict, profile: dict) -> tuple[str, dict, dict]:
     return xml, validation, quality_report
 
 
+def _processing_stats(
+    article: dict,
+    validation: dict,
+    elapsed_seconds: float,
+    source_node_count: int = 0,
+) -> dict:
+    """Expose reproducible run facts without changing article semantics."""
+    auto_fix = validation.get("auto_fix", {})
+    return ProcessingStats(
+        elapsed_seconds=round(max(0.0, elapsed_seconds), 4),
+        source_node_count=source_node_count,
+        section_count=len(article.get("sections", [])),
+        figure_count=len(article.get("figures", [])),
+        table_count=len(article.get("tables", [])),
+        formula_count=len(article.get("formulas", [])),
+        reference_count=len(article.get("references", [])),
+        warning_count=len(validation.get("warnings", [])),
+        error_count=len(validation.get("errors", [])),
+        schema_error_count=len(validation.get("schema_errors", [])),
+        auto_fix_rounds=int(auto_fix.get("rounds", 0) or 0),
+    ).model_dump()
+
+
 async def _convert_upload(file: UploadFile, profile_name: str = "default") -> dict:
+    started_at = time.perf_counter()
     if not file.filename or Path(file.filename).suffix.lower() != ".docx":
         raise ValueError("仅支持 .docx 文件。")
     work_dir = TEMP_ROOT / uuid4().hex
@@ -127,6 +153,12 @@ async def _convert_upload(file: UploadFile, profile_name: str = "default") -> di
         "xml": xml,
         "validation": validation,
         "quality_report": quality_report,
+        "processing_stats": _processing_stats(
+            article,
+            validation,
+            time.perf_counter() - started_at,
+            source_node_count=len(parser.document_flow_nodes),
+        ),
         "media_paths": media_paths,
         "official_comparison": official_comparison,
     }
@@ -186,6 +218,7 @@ async def batch_convert_docx(
 
 @router.post("/generate-xml", response_model=GenerateXmlResponse)
 def generate_xml(payload: GenerateXmlRequest) -> dict:
+    started_at = time.perf_counter()
     article = payload.article.model_dump()
     profile = profile_loader.load(article.get("profile", "default"))
     article = ProfileLoader.apply_metadata(article, profile)
@@ -200,6 +233,9 @@ def generate_xml(payload: GenerateXmlRequest) -> dict:
         "xml": xml,
         "validation": validation,
         "quality_report": quality_report,
+        "processing_stats": _processing_stats(
+            article, validation, time.perf_counter() - started_at
+        ),
     }
 
 

@@ -4,6 +4,11 @@ defineProps({
   exportStatuses: { type: Object, default: () => ({}) },
 })
 defineEmits(['select', 'download-xml', 'download-package'])
+
+function formatElapsed(seconds) {
+  if (seconds === undefined || seconds === null) return '-'
+  return `${Number(seconds).toFixed(2)}s`
+}
 </script>
 
 <template>
@@ -33,6 +38,8 @@ defineEmits(['select', 'download-xml', 'download-package'])
           <span>官方相似度 <b>{{ item.official_comparison?.available ? `${item.official_comparison.similarity_score}%` : '-' }}</b></span>
           <span>警告 <b>{{ item.validation?.warnings?.length || 0 }}</b></span>
           <span>错误 <b>{{ item.validation?.errors?.length || 0 }}</b></span>
+          <span>耗时 <b>{{ formatElapsed(item.processing_stats?.elapsed_seconds) }}</b></span>
+          <span>节点 <b>{{ item.processing_stats?.source_node_count ?? '-' }}</b></span>
           <span>导出 <b>{{ exportStatuses[item.filename] || '待导出' }}</b></span>
         </div>
         <div class="actions">

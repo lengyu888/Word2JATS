@@ -34,6 +34,7 @@ class JatsAutoFixer:
         schema = initial_schema or self.schema_validator.validate(xml)
         report = {
             "attempted": schema.get("jats_schema_valid") is False,
+            "rounds": 0,
             "applied_fixes": [],
             "remaining_schema_errors": list(schema.get("schema_errors", [])),
             "before_schema_error_count": len(schema.get("schema_errors", [])),
@@ -44,6 +45,7 @@ class JatsAutoFixer:
 
         current_xml = xml
         for _ in range(self.max_rounds):
+            report["rounds"] += 1
             root = etree.fromstring(current_xml.encode("utf-8"))
             fixes = self._apply_known_fixes(root, schema.get("schema_errors", []))
             if not fixes:

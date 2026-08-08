@@ -6,3 +6,11 @@
 **/dist
 backend/temp
 .pytest-tmp*
+
+# Local-only release artifacts; never send them to the Docker build daemon
+release/
+JATSv1.3 完整手册.pdf
+docs/Word2JATS技术方案说明书.docx
+docs/Word2JATS技术方案说明书.pdf
+scripts/generate_technical_solution_docx.py
+scripts/generate_technical_solution_pdf.py

@@ -208,6 +208,22 @@ class QualityReport(BaseModel):
     formula_summary: dict = Field(default_factory=dict)
 
 
+class ProcessingStats(BaseModel):
+    """Small, additive audit summary for one conversion run."""
+
+    elapsed_seconds: float = 0.0
+    source_node_count: int = 0
+    section_count: int = 0
+    figure_count: int = 0
+    table_count: int = 0
+    formula_count: int = 0
+    reference_count: int = 0
+    warning_count: int = 0
+    error_count: int = 0
+    schema_error_count: int = 0
+    auto_fix_rounds: int = 0
+
+
 class ConvertResponse(BaseModel):
     success: bool
     conversion_id: str
@@ -215,6 +231,7 @@ class ConvertResponse(BaseModel):
     xml: str
     validation: ValidationResult
     quality_report: QualityReport | None = None
+    processing_stats: ProcessingStats = Field(default_factory=ProcessingStats)
     media_paths: list[str] = Field(default_factory=list)
     official_comparison: dict = Field(default_factory=dict)
 
@@ -229,6 +246,7 @@ class GenerateXmlResponse(BaseModel):
     xml: str
     validation: ValidationResult
     quality_report: QualityReport | None = None
+    processing_stats: ProcessingStats = Field(default_factory=ProcessingStats)
 
 
 class BatchConvertItem(BaseModel):
@@ -239,6 +257,7 @@ class BatchConvertItem(BaseModel):
     xml: str = ""
     validation: ValidationResult | None = None
     quality_report: QualityReport | None = None
+    processing_stats: ProcessingStats = Field(default_factory=ProcessingStats)
     media_paths: list[str] = Field(default_factory=list)
     official_comparison: dict = Field(default_factory=dict)
     error: str = ""

@@ -109,6 +109,7 @@ async function regenerate(article) {
       xml: generated.xml,
       validation: generated.validation,
       quality_report: generated.quality_report,
+      processing_stats: generated.processing_stats,
     }
     batchResults.value = batchResults.value.map((item) => (
       item.filename === result.value.filename ? result.value : item

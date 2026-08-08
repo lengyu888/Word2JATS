@@ -17,6 +17,7 @@ FastAPI 后端负责上传、DOCX 文档流解析、Article JSON 构建、JATS X
 | xref 目标存在性过滤与缺失目标定位 | 已支持 |
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
+| 转换耗时、节点数量与校验轮次审计统计 | 已支持 |
 
 ## 技术栈
 
@@ -27,6 +28,12 @@ Python 3.10+、FastAPI、python-docx、lxml、Pydantic、PyYAML、pytest。
 ```bash
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --port 8000
+```
+
+发布前自检（不依赖额外 Python 包）：
+
+```bash
+python scripts/release_check.py
 ```
 
 常用入口：
@@ -54,6 +61,7 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 6. `JatsSchemaValidator` 与 `JatsAutoFixer` 执行本地正式 Schema 校验和最多两轮确定性修复。
 7. `ArticleValidator`、`QualityScorer` 汇总业务规则、引用完整性、质量分和修复建议。
 8. `FlowViewBuilder`、`VisualPreviewBuilder` 为前端生成文档流映射和图表预览数据。
+9. 路由层附加返回 `processing_stats`，记录耗时、源节点数、结构对象数、校验错误数和 Schema 自动修复轮次，便于回归审计。
 
 ## 官方样例演示与对比
 
@@ -131,3 +139,4 @@ media/
 - 正式 DTD 校验不会自动编造 ISSN、DOI、ORCID 等真实出版元数据。
 - 当前批量转换为请求内顺序处理，生产环境仍可扩展任务队列、鉴权和结果过期清理。
 - 质量分是可解释的规则评分，不等同于出版社最终验收结论。
+- 当前统计是单次请求级审计信息，尚未替代生产环境的集中式指标系统。

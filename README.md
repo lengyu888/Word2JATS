@@ -17,6 +17,7 @@ Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统直�
 | xref 目标存在性过滤与缺失目标定位 | 已支持 |
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
+| 转换耗时、节点数量与校验轮次审计统计 | 已支持 |
 
 ## 官方基线与 JATS 1.3 对齐
 
@@ -83,6 +84,13 @@ python -m pytest -q
 python evaluate_official_samples.py
 ```
 
+发布前可执行无依赖的仓库自检，检查官方样例、JATS 1.3 DTD、Docker/前端入口和 README 一致性：
+
+```bash
+cd backend
+python scripts/release_check.py
+```
+
 ```bash
 cd frontend
 npm run build
@@ -102,6 +110,8 @@ npm run build
 6. 再次执行业务规则、交叉引用和正式 JATS Schema 校验。
 7. 下载单篇 XML 或包含 JSON、XML、报告和媒体文件的 ZIP 交付包。
 
+每次转换响应还会返回 `processing_stats`，包含耗时、源文档流节点数、图表/公式/参考文献数量、校验错误数和 Schema 自动修复轮次，便于答辩展示和回归比较。
+
 ## 决赛展示流程
 
 1. 执行 `docker compose up --build` 并访问 `http://localhost:8080`。
@@ -110,6 +120,8 @@ npm run build
 4. 展示质量总分、分项得分、问题定位和修复建议。
 5. 在人工校正页补充出版元数据，重新生成 XML 并展示 Schema 状态变化。
 6. 下载 ZIP 交付包，最后展示官方样例对比报告。
+
+发布前再执行 `python -m pytest -q`、`python evaluate_official_samples.py`、`python scripts/release_check.py` 和前端 `npm run build`，形成可复现的交付门禁。
 
 ## API
 
@@ -135,5 +147,6 @@ npm run build
 - 正式 DTD 校验不会自动编造 ISSN、DOI、ORCID 等真实出版元数据。
 - 当前批量转换为请求内顺序处理，生产环境仍可扩展任务队列、鉴权和结果过期清理。
 - 质量分是可解释的规则评分，不等同于出版社最终验收结论。
+- `processing_stats` 是本次请求的运行审计摘要，不代表生产环境的长期性能基准。
 
 更多说明见 [backend/README.md](backend/README.md) 和 [frontend/README.md](frontend/README.md)。
