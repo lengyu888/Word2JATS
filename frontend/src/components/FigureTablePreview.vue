@@ -27,6 +27,10 @@ function markBroken(id) {
   brokenImages.value = new Set([...brokenImages.value, id])
 }
 
+function imageUrl(figure) {
+  return figure.preview_url || figure.media_url || ''
+}
+
 function openImage(figure) {
   imageTarget.value = figure
   imageDialog.value = true
@@ -73,11 +77,11 @@ const displayRows = (table) => (table.rows || []).slice(0, 10)
         <div v-else class="figure-grid">
           <el-card v-for="figure in figures" :key="figure.id" class="asset-card" shadow="hover">
             <div
-              v-if="figure.media_url && !brokenImages.has(figure.id)"
+              v-if="imageUrl(figure) && !brokenImages.has(figure.id)"
               class="image-frame"
               @click="openImage(figure)"
             >
-              <img :src="figure.media_url" :alt="figure.caption || figure.id" @error="markBroken(figure.id)" />
+              <img :src="imageUrl(figure)" :alt="figure.caption || figure.id" @error="markBroken(figure.id)" />
               <span>点击查看大图</span>
             </div>
             <div v-else class="image-placeholder">图片不可预览<br /><small>{{ figure.filename || '未提取媒体文件' }}</small></div>
@@ -89,6 +93,9 @@ const displayRows = (table) => (table.rows || []).slice(0, 10)
               <dt>所属章节</dt><dd>{{ figure.section_title || '未定位章节' }}</dd>
               <dt>正文引用</dt><dd>{{ figure.referenced_by?.length || 0 }} 次</dd>
               <dt>媒体文件</dt><dd>{{ figure.filename || '-' }}</dd>
+              <template v-if="figure.preview_url">
+                <dt>在线预览</dt><dd>PNG 预览，原始 TIFF 已保留</dd>
+              </template>
             </dl>
             <div v-if="figure.issues?.length" class="issues">
               <p v-for="(issue, index) in figure.issues" :key="index"><b>{{ issue.message }}</b><span>{{ issue.suggestion }}</span></p>
@@ -132,7 +139,7 @@ const displayRows = (table) => (table.rows || []).slice(0, 10)
     </el-tabs>
 
     <el-dialog v-model="imageDialog" :title="imageTarget?.caption || imageTarget?.id" width="78%">
-      <img v-if="imageTarget?.media_url" class="dialog-image" :src="imageTarget.media_url" :alt="imageTarget.caption" />
+      <img v-if="imageTarget && imageUrl(imageTarget)" class="dialog-image" :src="imageUrl(imageTarget)" :alt="imageTarget.caption" />
     </el-dialog>
     <el-dialog v-model="fragmentDialog" :title="fragmentTitle" width="76%">
       <pre class="xml-fragment">{{ fragmentContent }}</pre>

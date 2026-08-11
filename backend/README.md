@@ -8,6 +8,7 @@ FastAPI 后端负责上传、DOCX 文档流解析、Article JSON 构建、JATS X
 | --- | --- |
 | DOCX 真实文档流解析与原文映射 | 已支持 |
 | 图片、表格、列表、章节归属与可视化预览 | 已支持 |
+| TIFF 原件保留与 PNG 预览副本 | 已支持 |
 | OMML 转 MathML/LaTeX 与稳定降级 | 已支持 |
 | 图、表、公式、参考文献交叉引用恢复 | 已支持 |
 | 参考文献细粒度解析与 `element-citation` | 已支持 |
@@ -61,6 +62,7 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 6. `JatsSchemaValidator` 与 `JatsAutoFixer` 执行本地正式 Schema 校验和最多两轮确定性修复。
 7. `ArticleValidator`、`QualityScorer` 汇总业务规则、引用完整性、质量分和修复建议。
 8. `FlowViewBuilder`、`VisualPreviewBuilder` 为前端生成文档流映射和图表预览数据。
+   TIFF 图片会在受控媒体目录中额外生成 PNG 预览副本；JATS 与 ZIP 保持指向原始 TIFF。
 9. 路由层附加返回 `processing_stats`，记录耗时、源节点数、结构对象数、校验错误数和 Schema 自动修复轮次，便于回归审计。
 
 ## 官方样例演示与对比

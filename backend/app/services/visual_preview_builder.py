@@ -7,7 +7,8 @@ from app.services.xref_resolver import XrefResolver
 class VisualPreviewBuilder:
     """Enrich figures and tables with presentation and quality metadata."""
 
-    IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    BROWSER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    TIFF_EXTENSIONS = {".tif", ".tiff"}
     STATUS_PRIORITY = {"ok": 0, "need_review": 1, "warning": 2, "error": 3}
 
     def __init__(self):
@@ -34,17 +35,33 @@ class VisualPreviewBuilder:
     ) -> None:
         path = Path(figure.get("path", ""))
         filename = figure.get("filename") or (path.name if figure.get("path") else "")
+        preview_path = Path(figure.get("preview_path", ""))
+        preview_filename = figure.get("preview_filename") or (
+            preview_path.name if figure.get("preview_path") else ""
+        )
         figure["filename"] = filename
-        if conversion_id and filename and path.suffix.lower() in self.IMAGE_EXTENSIONS:
+        figure["preview_filename"] = preview_filename
+        if conversion_id and filename and path.suffix.lower() in self.BROWSER_IMAGE_EXTENSIONS:
             figure["media_url"] = f"/api/media/{conversion_id}/{filename}"
         else:
             figure.setdefault("media_url", "")
+        if conversion_id and preview_filename:
+            figure["preview_url"] = f"/api/media/{conversion_id}/{preview_filename}"
+        else:
+            figure.setdefault("preview_url", "")
         self._common(figure, article, references, quality_issues)
         if not figure.get("caption"):
             self._add_issue(figure, "warning", "图片缺少图题", "在人工校正页面补充图题")
         if not figure.get("path"):
             self._add_issue(figure, "warning", "图片文件缺失", "检查 Word 内嵌图片或重新上传文档")
-        elif not figure.get("media_url"):
+        elif path.suffix.lower() in self.TIFF_EXTENSIONS and not figure.get("preview_url"):
+            self._add_issue(
+                figure,
+                "need_review",
+                "TIFF 预览生成失败",
+                "原始 TIFF 已保留在 ZIP 结果包中，请检查文件完整性或转换环境",
+            )
+        elif not (figure.get("media_url") or figure.get("preview_url")):
             self._add_issue(figure, "need_review", "图片格式暂不支持在线预览", "通过 ZIP 结果包检查原始媒体文件")
 
     def _enrich_table(

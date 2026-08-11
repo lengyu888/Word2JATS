@@ -7,6 +7,7 @@ from app.services.document_flow_parser import DocumentFlowParser
 from app.services.contributor_normalizer import ContributorNormalizer
 from app.services.float_candidate_matcher import FloatCandidateMatcher
 from app.services.formula_semantic_normalizer import FormulaSemanticNormalizer
+from app.services.media_preview import TiffPreviewConverter
 from app.services.profile_loader import ProfileLoader
 from app.services.reference_parser import ReferenceParser
 from app.services.structure_evidence import StructureEvidence
@@ -75,6 +76,7 @@ class DocxParser:
         self.structure_evidence = StructureEvidence()
         self.float_matcher = FloatCandidateMatcher()
         self.formula_normalizer = FormulaSemanticNormalizer()
+        self.tiff_preview_converter = TiffPreviewConverter()
         self.abstract_re = self._marker_regex(
             self.profile.get("abstract_markers"), self.ABSTRACT_RE
         )
@@ -162,12 +164,12 @@ class DocxParser:
                     if pending_index is not None
                     else len(article["figures"]) + 1
                 )
-                path = self._save_flow_image(
+                media = self._save_flow_image(
                     node.get("media_path", ""), figure_number
                 )
                 if pending_index is not None:
                     article["figures"][pending_index].update(
-                        path=path,
+                        **media,
                         section_index=current_section_index,
                         _media_flow_index=node["flow_index"],
                     )
@@ -175,7 +177,7 @@ class DocxParser:
                     article["figures"].append({
                         "id": f"fig{len(article['figures']) + 1}",
                         "caption": "",
-                        "path": path,
+                        **media,
                         "section_index": current_section_index,
                         "_media_flow_index": node["flow_index"],
                     })
@@ -978,17 +980,21 @@ class DocxParser:
                 return item_index
         return None
 
-    def _save_flow_image(self, media_path: str, index: int) -> str:
+    def _save_flow_image(self, media_path: str, index: int) -> dict[str, str]:
         if not media_path:
-            return ""
+            return {"path": ""}
         self.media_dir.mkdir(parents=True, exist_ok=True)
         suffix = Path(media_path).suffix.lower() or ".bin"
         path = self.media_dir / f"figure_{index}{suffix}"
         with zipfile.ZipFile(self.docx_path) as archive:
             if media_path not in archive.namelist():
-                return ""
+                return {"path": ""}
             path.write_bytes(archive.read(media_path))
-        return self._relative_path(path)
+        result = {"path": self._relative_path(path)}
+        preview = self.tiff_preview_converter.create(path)
+        if preview:
+            result["preview_path"] = self._relative_path(preview)
+        return result
 
     def _relative_path(self, path: Path) -> str:
         try:

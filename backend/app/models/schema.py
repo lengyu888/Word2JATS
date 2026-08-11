@@ -25,6 +25,9 @@ class Figure(BaseModel):
     section_index: int = -1
     filename: str = ""
     media_url: str = ""
+    preview_path: str = ""
+    preview_filename: str = ""
+    preview_url: str = ""
     section_id: str = ""
     section_title: str = ""
     referenced_by: list[str] = Field(default_factory=list)
