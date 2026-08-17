@@ -92,13 +92,16 @@ class OfficialSampleEvaluator:
         output_path: str | Path,
         results: list[dict[str, Any]],
         summary: dict[str, Any],
+        *,
+        title: str = "官方样例对比报告",
+        command: str = "python evaluate_official_samples.py",
     ) -> Path:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         lines = [
-            "# 官方样例对比报告",
+            f"# {title}",
             "",
-            "> 本报告由 `python evaluate_official_samples.py` 基于本地官方 DOCX/XML 自动生成。指标 V2 按 JATS 语义维度评价，不使用全局标签数量充当质量分。",
+            f"> 本报告由 `{command}` 基于本地 DOCX/XML 配对自动生成。指标 V2 按 JATS 语义维度评价，不使用全局标签数量充当质量分。",
             "",
             "## 汇总",
             "",

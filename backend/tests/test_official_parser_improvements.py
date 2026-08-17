@@ -56,6 +56,65 @@ def test_article_title_style_beats_article_type_and_correspondence(tmp_path):
     assert [section["title"] for section in article["sections"]] == ["Introduction"]
 
 
+def test_long_first_heading_beats_short_author_line_as_title(tmp_path):
+    path = tmp_path / "long-title.docx"
+    document = Document()
+    title = document.add_paragraph(
+        "Organizing Knowledge by Constraint and Complexity Across Nested Systems"
+    )
+    title.style = document.styles.add_style("1", 1)
+    document.add_paragraph("Harendra Alwis 1,*")
+    document.add_paragraph("1 Independent Researcher, Melbourne, Australia")
+    document.add_paragraph("Abstract")
+    document.add_paragraph("Summary text.")
+    document.add_paragraph("Keywords")
+    document.add_paragraph("knowledge; systems; structure")
+    document.add_paragraph("1. Introduction")
+    document.add_paragraph("Body text.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["title"].startswith("Organizing Knowledge")
+    assert [author["name"] for author in article["authors"]] == ["Harendra Alwis"]
+
+
+def test_reference_narrative_is_not_float_caption(tmp_path):
+    path = tmp_path / "float-reference-prose.docx"
+    document = Document()
+    document.add_paragraph("Fig. 1 shows the study flow.")
+    document.add_paragraph("Table 2 presents descriptive statistics.")
+    document.add_paragraph("Figure 1. Study flow")
+    document.add_paragraph("Table 2: Descriptive statistics")
+    document.save(path)
+
+    nodes = [node for node in DocumentFlowParser(path).parse() if node.get("text")]
+
+    assert [node["type"] for node in nodes] == [
+        "paragraph", "paragraph", "figure_caption", "table_caption"
+    ]
+
+
+def test_references_and_notes_heading_starts_reference_list(tmp_path):
+    path = tmp_path / "references-and-notes.docx"
+    document = Document()
+    title = document.add_paragraph("Reference Boundary")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: references; JATS; publishing")
+    document.add_paragraph("1. Introduction")
+    document.add_paragraph("Prior evidence (Smith, 2024).")
+    document.add_paragraph("References and Notes")
+    document.add_paragraph("Smith J. Reference title. Journal. 2024;1:1-5.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert len(article["references"]) == 1
+    assert article["references"][0]["raw"].startswith("Smith J")
+
+
 def test_numbered_affiliations_and_numeric_table_text_are_not_sections(tmp_path):
     path = tmp_path / "section-exclusions.docx"
     document = Document()

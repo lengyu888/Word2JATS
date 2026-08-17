@@ -180,6 +180,49 @@ def test_generator_resolves_xrefs_inside_captions():
     ]
 
 
+def test_generator_resolves_full_name_author_year_citations():
+    article = build_article(
+        "Evidence was reported (Austen R. Anderson & Blaine J. Fowers, 2020; "
+        "Wai Kai Hou, et al., 2020)."
+    )
+    article["references"] = [
+        {
+            "id": "ref1",
+            "label": "",
+            "raw": "Austen R. Anderson, Blaine J. Fowers. Study title. 2020.",
+        },
+        {
+            "id": "ref2",
+            "label": "",
+            "raw": "Wai Kai Hou, Huinan Liu, Li Liang, et al. Study title. 2020.",
+        },
+    ]
+
+    root = etree.fromstring(JatsGenerator().generate(article).encode("utf-8"))
+    xrefs = root.xpath("//body/sec/p/xref")
+
+    assert [(xref.get("ref-type"), xref.get("rid")) for xref in xrefs] == [
+        ("bibr", "ref1"),
+        ("bibr", "ref2"),
+    ]
+    assert xrefs[0].text == "Austen R. Anderson & Blaine J. Fowers, 2020"
+    assert xrefs[1].text == "Wai Kai Hou, et al., 2020"
+
+
+def test_generator_assigns_missing_reference_id_before_author_year_resolution():
+    article = build_article("Prior work (Austen R. Anderson, 2020) supports this.")
+    article["references"] = [{
+        "id": "",
+        "label": "",
+        "raw": "Austen R. Anderson. Study title. 2020.",
+    }]
+
+    root = etree.fromstring(JatsGenerator().generate(article).encode("utf-8"))
+
+    assert root.xpath("string(//body/sec/p/xref/@rid)") == "ref1"
+    assert root.xpath("string(//back/ref-list/ref/@id)") == "ref1"
+
+
 def test_validator_reports_valid_and_unresolved_xrefs():
     article = build_article("见图1和图2，参考[1-4]。")
     xml = JatsGenerator().generate(article)

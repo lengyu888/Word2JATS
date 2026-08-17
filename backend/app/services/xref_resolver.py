@@ -73,6 +73,15 @@ class XrefResolver:
             "ref",
         ),
     )
+    AUTHOR_YEAR_RE = re.compile(
+        r"(?<=[(;])\s*(?P<text>(?P<author>[^();]{1,140}?)\s*,\s*"
+        r"(?P<year>(?:19|20)\d{2})[a-z]?)"
+    )
+    NARRATIVE_AUTHOR_YEAR_RE = re.compile(
+        r"(?P<text>(?P<author>[A-Z\u00c0-\u024f][\w\u00c0-\u024f'\u2019.-]*"
+        r"(?:\s+[A-Z\u00c0-\u024f][\w\u00c0-\u024f'\u2019.-]*)?"
+        r"(?:\s+et\s+al\.)?)\s*\(\s*(?P<year>(?:19|20)\d{2})[a-z]?(?:\s*[-\u2013\u2014]\s*(?:19|20)\d{2})?\s*\))",
+    )
 
     def resolve(self, text: str) -> list[dict[str, Any]]:
         matches: list[dict[str, Any]] = []
@@ -112,10 +121,18 @@ class XrefResolver:
         return resolved
 
     def resolve_against_targets(
-        self, text: str, target_ids: set[str]
+        self, text: str, target_ids: set[str],
+        reference_targets: dict[tuple[str, str], str] | None = None,
     ) -> list[dict[str, Any]]:
+        matches = self.resolve(text)
+        if reference_targets:
+            matches.extend(self._resolve_author_year(text, reference_targets))
+        matches.sort(key=lambda item: (item["start"], -(item["end"] - item["start"])))
         resolved = []
-        for match in self.resolve(text):
+        cursor = -1
+        for match in matches:
+            if match["start"] < cursor:
+                continue
             requested = match["rid"].split()
             valid = []
             missing = []
@@ -138,7 +155,78 @@ class XrefResolver:
                 "missing_targets": missing,
                 "normalized_from": normalized_from,
             })
+            cursor = match["end"]
         return resolved
+
+    @classmethod
+    def build_reference_targets(
+        cls, references: list[dict[str, Any]]
+    ) -> dict[tuple[str, str], str]:
+        """Build conservative first-author/year lookup keys for bibliography xrefs."""
+        targets: dict[tuple[str, str], str] = {}
+        for reference in references:
+            reference_id = str(reference.get("id", "")).strip()
+            raw = str(reference.get("raw") or reference.get("mixed_citation") or "")
+            if not reference_id or not raw:
+                continue
+            years = re.findall(r"\b(?:19|20)\d{2}\b", raw)
+            for author in cls._reference_author_keys(reference, raw):
+                for year in years:
+                    targets.setdefault((author, year), reference_id)
+        return targets
+
+    @classmethod
+    def _resolve_author_year(
+        cls, text: str, targets: dict[tuple[str, str], str]
+    ) -> list[dict[str, Any]]:
+        matches = []
+        for pattern in (cls.AUTHOR_YEAR_RE, cls.NARRATIVE_AUTHOR_YEAR_RE):
+            for match in pattern.finditer(text):
+                year = match.group("year")[:4]
+                reference_id = ""
+                for author in cls._citation_author_keys(match.group("author")):
+                    reference_id = targets.get((author, year), "")
+                    if reference_id:
+                        break
+                if reference_id:
+                    matches.append(cls._match_item(match, "bibr", reference_id))
+        return matches
+
+    @staticmethod
+    def _citation_author_keys(value: str) -> list[str]:
+        text = re.sub(r"\bet\s+al\.?", "", value, flags=re.I)
+        first_author = re.split(r"\s+(?:and|&)\s+|,", text, maxsplit=1, flags=re.I)[0]
+        words = re.findall(
+            r"[A-Za-z\u00c0-\u024f][A-Za-z\u00c0-\u024f'\u2019-]*",
+            first_author,
+        )
+        if not words:
+            return []
+        return list(dict.fromkeys([words[0].casefold(), words[-1].casefold()]))
+
+    @classmethod
+    def _reference_author_keys(cls, reference: dict[str, Any], raw: str) -> list[str]:
+        keys = []
+        for author in reference.get("authors", []) or []:
+            keys.extend(cls._citation_author_keys(str(author)))
+        leading = raw.split("(", 1)[0]
+        first_author = re.split(
+            r"\s+(?:and|&)\s+|[,;]", raw, maxsplit=1, flags=re.I
+        )[0]
+        keys.extend(cls._citation_author_keys(first_author))
+        first = re.match(
+            r"^\s*(?:(?:[A-Z]\.?\s*){1,3})?(?P<name>[A-Z\u00c0-\u024f][A-Za-z\u00c0-\u024f'\u2019-]*)",
+            leading,
+        )
+        if first:
+            keys.append(first.group("name").casefold())
+        full_name = re.match(
+            r"^\s*[A-Z\u00c0-\u024f][A-Za-z\u00c0-\u024f'\u2019-]*\s+(?:[A-Z]\.\s*){1,3}(?P<surname>[A-Z\u00c0-\u024f][A-Za-z\u00c0-\u024f'\u2019-]*)",
+            leading,
+        )
+        if full_name:
+            keys.append(full_name.group("surname").casefold())
+        return list(dict.fromkeys(keys))
 
     @staticmethod
     def _match_item(match: Any, ref_type: str, rid: str) -> dict[str, Any]:
@@ -148,12 +236,13 @@ class XrefResolver:
         }
 
     def append_mixed_content(
-        self, element: Any, text: str, allowed_ids: set[str] | None = None
+        self, element: Any, text: str, allowed_ids: set[str] | None = None,
+        reference_targets: dict[tuple[str, str], str] | None = None,
     ) -> None:
         cursor = 0
         previous = None
         matches = (
-            self.resolve_against_targets(text, allowed_ids)
+            self.resolve_against_targets(text, allowed_ids, reference_targets)
             if allowed_ids is not None
             else self.resolve(text)
         )

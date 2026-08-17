@@ -56,7 +56,23 @@ class DocxParser:
     )
     ABSTRACT_RE = re.compile(r"^\s*(摘要|摘\s*要|abstract)\s*[:：]?\s*", re.I)
     KEYWORD_RE = re.compile(r"^\s*(关键词|关\s*键\s*词|key\s*words?|keywords)\s*[:：]?\s*", re.I)
-    REFERENCE_RE = re.compile(r"^\s*(?:参考\s*文献|references?)\s*[:：]?\s*$", re.I)
+    REFERENCE_RE = re.compile(
+        r"^\s*(?:参考\s*文献|references?(?:\s*(?:and|&)\s*notes?)?)\s*[:：]?\s*$",
+        re.I,
+    )
+    ARTICLE_TYPE_LABELS = {
+        "original research", "research article", "original article", "review",
+        "review article", "case report", "short communication", "editorial",
+        "letter", "protocol", "article",
+    }
+    ABSTRACT_TRAILING_METADATA_RE = re.compile(
+        r"(?:\s|^)\(?\s*(?:received|revised|accepted|published|copyright)\b.*$",
+        re.I,
+    )
+    ABSTRACT_NON_APPLICABLE_REGISTRATION_RE = re.compile(
+        r"(?:\s|^)clinical\s+trial\s+registration\s*:\s*not\s+applicable\.?\s*$",
+        re.I,
+    )
     REFERENCE_LABEL_RE = re.compile(
         r"^\s*(?P<label>\[\s*\d+\s*\]|\(\s*\d+\s*\)|（\s*\d+\s*）|\d+\s*[.．、])"
         r"\s*(?P<raw>.*)$"
@@ -146,9 +162,13 @@ class DocxParser:
                 continue
             node_type = node["type"]
             text = node.get("text", "").strip()
-            if self._matches_any(self.figure_patterns, text):
+            if self._matches_any(self.figure_patterns, text) and self._profile_caption_evidence(
+                node, text, "figure"
+            ):
                 node_type = "figure_caption"
-            elif self._matches_any(self.table_patterns, text):
+            elif self._matches_any(self.table_patterns, text) and self._profile_caption_evidence(
+                node, text, "table"
+            ):
                 node_type = "table_caption"
 
             if node_type == "image":
@@ -488,7 +508,7 @@ class DocxParser:
                 active_embedded_table_index = None
                 last_native_table_index = None
 
-        article["abstract"] = "\n".join(abstract_parts)
+        article["abstract"] = self._clean_abstract("\n".join(abstract_parts))
 
     def _resolve_table_image_fallbacks(self, article: dict[str, Any]) -> None:
         article["figures"] = [
@@ -538,6 +558,54 @@ class DocxParser:
                 for figure in article["figures"]
                 if figure.get("id") not in matched_figure_ids
             ]
+        article["figures"] = self._deduplicate_float_candidates(
+            article["figures"], evidence_fields=("path", "paths")
+        )
+        article["tables"] = self._deduplicate_float_candidates(
+            article["tables"], evidence_fields=("rows", "path")
+        )
+        self._renumber_float_ids(article["figures"], "fig")
+        self._renumber_float_ids(article["tables"], "tab")
+
+    @classmethod
+    def _deduplicate_float_candidates(
+        cls, items: list[dict[str, Any]], *, evidence_fields: tuple[str, ...]
+    ) -> list[dict[str, Any]]:
+        """Prefer a media/table-backed candidate when caption numbers repeat."""
+        grouped: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+        for index, item in enumerate(items):
+            number = cls._caption_number(str(item.get("caption", "")))
+            if number:
+                grouped.setdefault(number, []).append((index, item))
+        removed: set[int] = set()
+        for candidates in grouped.values():
+            evidenced = [
+                (index, item)
+                for index, item in candidates
+                if any(bool(item.get(field)) for field in evidence_fields)
+            ]
+            if not evidenced:
+                continue
+            best_index, _ = max(
+                evidenced,
+                key=lambda pair: (
+                    int(bool(pair[1].get("path") or pair[1].get("paths"))),
+                    len(pair[1].get("rows", []) or []),
+                    len(str(pair[1].get("caption", ""))),
+                    -pair[0],
+                ),
+            )
+            for index, item in candidates:
+                if index != best_index and not any(
+                    bool(item.get(field)) for field in evidence_fields
+                ):
+                    removed.add(index)
+        return [item for index, item in enumerate(items) if index not in removed]
+
+    @staticmethod
+    def _renumber_float_ids(items: list[dict[str, Any]], prefix: str) -> None:
+        for index, item in enumerate(items, start=1):
+            item["id"] = f"{prefix}{index}"
 
     def _assign_style_section_labels(self, article: dict[str, Any]) -> None:
         counters = [0] * 6
@@ -786,10 +854,24 @@ class DocxParser:
                 score += 5
             if "title" in style and "type" not in style:
                 score += 10
+            if "articletype" in style or text.casefold().strip(" .:") in self.ARTICLE_TYPE_LABELS:
+                score -= 12
+            affiliation_hits = sum(
+                word in text.casefold() for word in self.AFFILIATION_WORDS
+            )
+            if affiliation_hits >= 2 or (
+                affiliation_hits
+                and re.match(r"^\s*(?:\d+|[a-z])(?:[\s.)]|(?=[A-Z]))", text)
+            ):
+                score -= 8
             if any(marker in text.casefold() for marker in ("correspondence", "orcid")):
                 score -= 10
             if 4 <= len(text) <= 45:
                 score += 2
+            if 46 <= len(text) <= 350:
+                score += 3
+            if index == 0 and len(text) >= 20 and paragraph.get("type") in {"title", "heading"}:
+                score += 3
             if self.abstract_re.match(text) or self.keyword_re.match(text):
                 score -= 8
             if score > best_score:
@@ -860,6 +942,22 @@ class DocxParser:
             if is_chinese_name or (2 <= len(words) <= 6 and len(value) <= 80):
                 names.append(value)
         return list(dict.fromkeys(names))
+
+    @staticmethod
+    def _profile_caption_evidence(
+        node: dict[str, Any], text: str, expected_kind: str
+    ) -> bool:
+        if node.get("type") in {"figure_caption", "table_caption"}:
+            return True
+        return DocumentFlowParser._looks_like_float_caption(
+            text,
+            str(node.get("style", "")).casefold(),
+            expected_kind,
+        )
+
+    def _clean_abstract(self, text: str) -> str:
+        cleaned = self.ABSTRACT_TRAILING_METADATA_RE.sub("", text).strip()
+        return self.ABSTRACT_NON_APPLICABLE_REGISTRATION_RE.sub("", cleaned).strip()
 
     def _parse_reference(self, text: str, index: int) -> dict[str, Any]:
         return self.reference_parser.parse(text, index)
@@ -960,7 +1058,11 @@ class DocxParser:
 
     @staticmethod
     def _split_values(text: str) -> list[str]:
-        return [value.strip() for value in re.split(r"[；;，,、]+", text) if value.strip()]
+        return [
+            value.strip()
+            for value in re.split(r"[；;，,、:：]+", text)
+            if value.strip()
+        ]
 
     @staticmethod
     def _section_label(marker: str, text: str) -> str:

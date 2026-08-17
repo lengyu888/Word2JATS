@@ -10,7 +10,7 @@ FastAPI 后端负责上传、DOCX 文档流解析、Article JSON 构建、JATS X
 | 图片、表格、列表、章节归属与可视化预览 | 已支持 |
 | TIFF 原件保留与 PNG 预览副本 | 已支持 |
 | OMML 转 MathML/LaTeX 与稳定降级 | 已支持 |
-| 图、表、公式、参考文献交叉引用恢复 | 已支持 |
+| 图、表、公式、数字制及作者年份制参考文献交叉引用恢复 | 已支持 |
 | 参考文献细粒度解析与 `element-citation` | 已支持 |
 | JATS Publishing 1.3 MathML3 DTD 校验 | 已支持 |
 | 官方样例 XML 结构对比 | 已支持 |
@@ -57,7 +57,7 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 1. `DocumentFlowParser` 直接解析 `word/document.xml` 和关系文件，按真实顺序生成段落、图片、表格和公式节点。
 2. `DocxParser` 识别元数据、章节、图表、列表、公式、参考文献并绑定章节。
 3. `OmmlConverter` 输出 MathML、LaTeX、转换状态、支持特性和复核问题。
-4. `StructureEvidence` 对图表绑定与独立公式分类给出置信度、证据和复核状态；`XrefResolver` 仅对实际存在的图、表、公式和参考文献 ID 生成正文引用。
+4. `StructureEvidence` 对图表绑定与独立公式分类给出置信度、证据和复核状态；`XrefResolver` 恢复数字制及作者年份制引用，并且仅对实际存在的图、表、公式和参考文献 ID 生成正文引用。
 5. `JatsGenerator` 生成接近 JATS Publishing 1.3 的 XML，并输出官方 MathML3 DTD `DOCTYPE`、`dtd-version="1.3"` 和 `xlink` 命名空间。
 6. `JatsSchemaValidator` 与 `JatsAutoFixer` 执行本地正式 Schema 校验和最多两轮确定性修复。
 7. `ArticleValidator`、`QualityScorer` 汇总业务规则、引用完整性、质量分和修复建议。
@@ -78,6 +78,8 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 `/api/demo-documents` 默认返回上述 5 篇官方样例，并为重复的 `初始文件.docx` 生成唯一展示名。`/api/convert` 和 `/api/batch-convert` 对这些展示名会自动匹配同目录官方 XML，返回 `official_comparison`。语义指标 V2 对元数据、章节、图表、公式、参考文献、交叉引用和 XML 合规性分别评分，不使用全局标签计数替代转换质量。
 
 当前五篇官方样例自动转换结果为：平均相似度 **96.6%**、最低单篇 **95%**、JATS 1.3 DTD 通过率 **100%**。比较器额外输出图表数量、题注、章节归属和公式数量、内容、章节归属等细分指标；命令默认执行 94/90/100% 防回归门槛。最新优化包含图表题注续行合并、图后风险人数小表识别、表注 `table-wrap-foot` 输出、caption 内交叉引用恢复、单位 `<aff><label>`、未编号一级章节 `<label>` 与编号章节 label/title 拆分输出、紧凑英文期刊参考文献尾部与 DOI URL 解析、逗号分隔英文期刊参考文献解析、结构化参考文献原始 `mixed-citation` 保真输出，以及 `fig1/tab9` 与 `fig001/tab009` 这类等价目标 ID 的语义归一。图表候选匹配器会综合章节、文档流距离、编号和对象类型识别图片化表格，JATS 生成器也会恢复 Word 原生表格单元格内的有效交叉引用。运行以下命令可重新评测：
+
+本轮通用规则增强了文章类型标签与真实标题的区分，利用题注样式和编号后分隔符避免把 `Fig. 1 shows ...`、`Table 2 presents ...` 误分类为图表题，并支持 `References and Notes` 参考文献边界。作者年份制引用可处理全名、`et al.`、叙述式引用及括号内分号分隔的多篇引用；只有第一作者和年份同时命中现有参考文献时才输出 JATS `xref`。
 
 ```bash
 python evaluate_official_samples.py
@@ -135,6 +137,7 @@ media/
 ## 当前真实限制
 
 - 启发式规则面对复杂排版、多作者多单位映射时仍可能需要人工校正。
+- 作者年份制引用在同作者同年歧义、缺失年份或非标准姓名顺序下可能保留原文并提示复核。
 - 不保证覆盖全部 Office Math；复杂嵌套矩阵、复杂分段、多重重音和未知 OMML 子结构会标记 `partial/failed`。
 - 图片公式暂不支持 OCR，系统不调用商业 API。
 - 复杂合并单元格、跨页表格、嵌套列表和非标准参考文献仍需人工复核。

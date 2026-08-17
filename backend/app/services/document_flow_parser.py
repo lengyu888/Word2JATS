@@ -37,6 +37,18 @@ class DocumentFlowParser:
         r"(=|≈|≤|≥|∑|∫|√|[αβγλμσ]|\\?frac|\\?sqrt|\blim\b|\blog\b|\bsin\b|\bcos\b)",
         re.I,
     )
+    FLOAT_CAPTION_RE = re.compile(
+        r"^\s*(?P<kind>\u56fe|\u8868|fig(?:ure)?|table)\.?\s*"
+        r"(?P<number>\d+(?:\s*[-\u2013\u2014]\s*\d+)*)"
+        r"(?P<separator>[.:\uff1a])?(?:\s+(?P<body>.*))?$",
+        re.I,
+    )
+    FLOAT_REFERENCE_VERBS = {
+        "shows", "show", "provides", "provide", "depicts", "depict",
+        "presents", "present", "summarizes", "summarise", "illustrates",
+        "illustrate", "demonstrates", "demonstrate", "compares", "compare",
+        "reports", "report", "indicates", "indicate",
+    }
 
     def __init__(self, docx_path: str | Path):
         self.docx_path = Path(docx_path)
@@ -138,9 +150,9 @@ class DocumentFlowParser:
         style_lower = style.lower()
         if style_lower == "title" or ("title" in style_lower and "type" not in style_lower):
             return "title"
-        if self.FIGURE_RE.match(text):
+        if self._looks_like_float_caption(text, style_lower, "figure"):
             return "figure_caption"
-        if self.TABLE_RE.match(text):
+        if self._looks_like_float_caption(text, style_lower, "table"):
             return "table_caption"
         if (
             self.SECTION_RE.match(text)
@@ -160,6 +172,28 @@ class DocumentFlowParser:
         ):
             return "formula"
         return "paragraph"
+
+    @classmethod
+    def _looks_like_float_caption(
+        cls, text: str, style_lower: str, expected_kind: str
+    ) -> bool:
+        """Separate captions from prose such as ``Fig. 1 shows ...``."""
+        match = cls.FLOAT_CAPTION_RE.match(text)
+        if not match:
+            return False
+        kind = match.group("kind").casefold()
+        is_figure = kind in {"\u56fe", "fig", "figure"}
+        if (expected_kind == "figure") != is_figure:
+            return False
+        if "caption" in style_lower or kind in {"\u56fe", "\u8868"}:
+            return True
+        if match.group("separator"):
+            return True
+        body = (match.group("body") or "").strip()
+        first_word = body.split(maxsplit=1)[0].casefold().rstrip(".,;:") if body else ""
+        if first_word in cls.FLOAT_REFERENCE_VERBS:
+            return False
+        return bool(body and body[0].isupper())
 
     @classmethod
     def _looks_like_plain_formula(cls, text: str) -> bool:

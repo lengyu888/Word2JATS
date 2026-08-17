@@ -25,12 +25,16 @@ class JatsGenerator:
 
     def generate(self, article: dict[str, Any]) -> str:
         article = ProfileLoader.apply_metadata(article, self.profile)
+        self._ensure_object_ids(article)
         self._allowed_xref_ids = {
             str(item.get("id"))
             for collection in ("figures", "tables", "formulas", "references")
             for item in article.get(collection, [])
             if item.get("id")
         }
+        self._reference_citation_targets = self.xref_resolver.build_reference_targets(
+            article.get("references", [])
+        )
         root = etree.Element("article", nsmap=self.NSMAP)
         root.set("article-type", article.get("article_type") or "research-article")
         root.set("dtd-version", "1.3")
@@ -201,6 +205,19 @@ class JatsGenerator:
         ).decode("utf-8")
 
     @staticmethod
+    def _ensure_object_ids(article: dict[str, Any]) -> None:
+        for collection, prefix in (
+            ("figures", "fig"),
+            ("tables", "tab"),
+            ("lists", "list"),
+            ("formulas", "eq"),
+            ("references", "ref"),
+        ):
+            for index, item in enumerate(article.get(collection, []), start=1):
+                if not item.get("id"):
+                    item["id"] = f"{prefix}{index}"
+
+    @staticmethod
     def _build_journal_meta(meta: Any, article: dict[str, Any]) -> None:
         journal_id = etree.SubElement(meta, "journal-id", attrib={"journal-id-type": "publisher-id"})
         journal_id.text = article.get("journal_id", "")
@@ -265,9 +282,8 @@ class JatsGenerator:
         aff = etree.SubElement(parent, "aff", id=f"aff{index}")
         text = str(affiliation or "").strip()
         label_match = re.match(
-            r"^(?P<label>\d+|[a-z])[\s.)、:：-]+(?P<body>.+)$",
+            r"^(?P<label>\d+|[a-z])(?:[\s.)、:：-]+|(?=[A-Z]))(?P<body>.+)$",
             text,
-            re.I,
         )
         label_text = label_match.group("label") if label_match else str(index)
         body_text = label_match.group("body").strip() if label_match else text
@@ -317,7 +333,10 @@ class JatsGenerator:
     def _append_body_paragraph(self, parent: Any, text: str) -> Any:
         paragraph = etree.SubElement(parent, "p")
         self.xref_resolver.append_mixed_content(
-            paragraph, text, allowed_ids=self._allowed_xref_ids
+            paragraph,
+            text,
+            allowed_ids=self._allowed_xref_ids,
+            reference_targets=self._reference_citation_targets,
         )
         return paragraph
 

@@ -173,9 +173,14 @@ class ArticleValidator:
             if item.get("id")
         }
         resolver = XrefResolver()
+        reference_targets = resolver.build_reference_targets(
+            article.get("references", [])
+        )
         for section in article.get("sections", []):
             for paragraph in section.get("paragraphs", []):
-                for match in resolver.resolve_against_targets(paragraph, target_ids):
+                for match in resolver.resolve_against_targets(
+                    paragraph, target_ids, reference_targets
+                ):
                     for original in match.get("normalized_from", []):
                         parent_match = re.fullmatch(r"(fig\d+)[a-z]", original, re.I)
                         parent = parent_match.group(1) if parent_match else match["rid"]
