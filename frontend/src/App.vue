@@ -20,8 +20,13 @@ const batchResults = ref([])
 const activeTab = ref('json')
 const profiles = ref([])
 const exportStatuses = ref({})
+let batchSequence = 0
 const sectionCount = computed(() => result.value?.article.sections.length || 0)
 const referenceCount = computed(() => result.value?.article.references.length || 0)
+
+function resultKey(item) {
+  return item?.conversion_id || item?.client_key || ''
+}
 
 onMounted(async () => {
   try {
@@ -35,8 +40,13 @@ async function convert(files, profile) {
   loading.value = true
   try {
     const batch = await batchConvertDocuments(files, profile)
-    batchResults.value = batch.results
-    result.value = batch.results.find((item) => item.status === 'success') || null
+    batchSequence += 1
+    exportStatuses.value = {}
+    batchResults.value = batch.results.map((item, index) => ({
+      ...item,
+      client_key: item.conversion_id || `batch-${batchSequence}-${index}`,
+    }))
+    result.value = batchResults.value.find((item) => item.status === 'success') || null
     activeTab.value = 'json'
     ElMessage.success(`批量转换完成：${batch.results.filter((item) => item.status === 'success').length}/${batch.results.length} 成功`)
   } catch (error) {
@@ -81,7 +91,8 @@ function downloadXml(item) {
 }
 
 async function downloadPackage(item) {
-  exportStatuses.value[item.filename] = '生成中'
+  const key = resultKey(item)
+  exportStatuses.value[key] = '生成中'
   try {
     const blob = await exportPackage({
       filename: item.filename,
@@ -92,9 +103,9 @@ async function downloadPackage(item) {
       quality_report: item.quality_report,
     })
     downloadBlob(blob, `${item.filename.replace(/\.docx$/i, '') || 'article'}-word2jats.zip`)
-    exportStatuses.value[item.filename] = '已导出'
+    exportStatuses.value[key] = '已导出'
   } catch (error) {
-    exportStatuses.value[item.filename] = '导出失败'
+    exportStatuses.value[key] = '导出失败'
     ElMessage.error(error.response?.data?.detail || 'ZIP 结果包生成失败')
   }
 }
@@ -111,8 +122,9 @@ async function regenerate(article) {
       quality_report: generated.quality_report,
       processing_stats: generated.processing_stats,
     }
+    const selectedKey = resultKey(result.value)
     batchResults.value = batchResults.value.map((item) => (
-      item.filename === result.value.filename ? result.value : item
+      resultKey(item) === selectedKey ? result.value : item
     ))
     activeTab.value = 'xml'
     ElMessage.success('XML 已根据人工校正内容重新生成')

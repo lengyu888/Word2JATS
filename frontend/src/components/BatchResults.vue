@@ -1,5 +1,5 @@
 <script setup>
-defineProps({
+const props = defineProps({
   results: { type: Array, required: true },
   exportStatuses: { type: Object, default: () => ({}) },
 })
@@ -8,6 +8,14 @@ defineEmits(['select', 'download-xml', 'download-package'])
 function formatElapsed(seconds) {
   if (seconds === undefined || seconds === null) return '-'
   return `${Number(seconds).toFixed(2)}s`
+}
+
+function resultKey(item) {
+  return item.conversion_id || item.client_key || ''
+}
+
+function exportStatus(item) {
+  return props.exportStatuses[resultKey(item)] || '待导出'
 }
 </script>
 
@@ -22,7 +30,7 @@ function formatElapsed(seconds) {
     </div>
 
     <div class="result-list">
-      <div v-for="(item, index) in results" :key="`${item.filename}-${index}`" class="result-row">
+      <div v-for="item in results" :key="resultKey(item)" class="result-row">
         <div class="file-info">
           <el-tag :type="item.status === 'success' ? 'success' : 'danger'" effect="dark">
             {{ item.status === 'success' ? '成功' : '失败' }}
@@ -40,12 +48,12 @@ function formatElapsed(seconds) {
           <span>错误 <b>{{ item.validation?.errors?.length || 0 }}</b></span>
           <span>耗时 <b>{{ formatElapsed(item.processing_stats?.elapsed_seconds) }}</b></span>
           <span>节点 <b>{{ item.processing_stats?.source_node_count ?? '-' }}</b></span>
-          <span>导出 <b>{{ exportStatuses[item.filename] || '待导出' }}</b></span>
+          <span>导出 <b>{{ exportStatus(item) }}</b></span>
         </div>
         <div class="actions">
           <el-button :disabled="item.status !== 'success'" @click="$emit('select', item)">查看详情</el-button>
           <el-button :disabled="item.status !== 'success'" @click="$emit('download-xml', item)">下载 XML</el-button>
-          <el-button type="primary" :loading="exportStatuses[item.filename] === '生成中'" :disabled="item.status !== 'success'" @click="$emit('download-package', item)">
+          <el-button type="primary" :loading="exportStatus(item) === '生成中'" :disabled="item.status !== 'success'" @click="$emit('download-package', item)">
             下载 ZIP
           </el-button>
         </div>
