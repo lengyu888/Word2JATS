@@ -92,6 +92,7 @@ class ArticleValidator:
             content = (
                 formula.get("latex")
                 or formula.get("content")
+                or formula.get("path")
                 or formula.get("tex")
                 or formula.get("plain_text")
                 or ""

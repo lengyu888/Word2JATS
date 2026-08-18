@@ -1,11 +1,12 @@
 # Word2JATS
 
-Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统直接解析 DOCX 真实文档流，将标题、作者、摘要、章节、图表、公式、参考文献和正文交叉引用转换为结构化 JSON 与接近 JATS Publishing 1.3 的 XML，并提供正式 DTD 校验、质量评分、人工校正和 ZIP 交付。
+Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统支持上传二进制 `.doc` 与 OOXML `.docx`；`.doc` 先在受控临时目录中由 LibreOffice Headless 转为 `.docx`，随后统一解析 DOCX 真实文档流，将标题、作者、摘要、章节、图表、公式、参考文献和正文交叉引用转换为结构化 JSON 与接近 JATS Publishing 1.3 的 XML，并提供正式 DTD 校验、质量评分、人工校正和 ZIP 交付。
 
 ## 核心能力
 
 | 能力 | 状态 |
 | --- | --- |
+| 旧版 `.doc` 安全预转换与转换审计 | 已支持 |
 | DOCX 真实文档流解析与原文映射 | 已支持 |
 | 图片、表格、列表、章节归属与可视化预览 | 已支持 |
 | TIFF 原件保留与浏览器 PNG 预览副本 | 已支持 |
@@ -39,9 +40,9 @@ Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统直�
 
 前端点击“一键加载官方样例”后，会通过 `/api/demo-documents` 获取官方样例清单，下载唯一展示名的 DOCX，并调用现有批量转换流程。每个转换结果会返回 `official_comparison`。语义指标 V2 分别评价元数据、章节结构、图表、公式、参考文献、交叉引用和 XML 合规性，并区分“源文档可恢复差异”与 DOI、期刊 ID 等“出版方补录差异”。旧接口 `/api/demo-document` 继续保留，用于兼容单篇演示稿调用方。
 
-当前五篇官方样例自动转换结果：平均语义相似度 **96.6%**，最低单篇 **95%**，JATS Publishing 1.3 MathML3 DTD 通过率 **100%**。最新优化包含图表题注续行合并、图后风险人数小表识别、表注 `table-wrap-foot` 输出、caption 内交叉引用恢复、单位 `<aff><label>`、未编号一级章节 `<label>` 与编号章节 label/title 拆分输出、紧凑英文期刊参考文献尾部与 DOI URL 解析、逗号分隔英文期刊参考文献解析、结构化参考文献原始 `mixed-citation` 保真输出，以及 `fig1/tab9` 与 `fig001/tab009` 这类等价目标 ID 的语义归一。评测同时细分图表数量、题注、章节归属，以及公式数量、内容和章节归属；默认验收门槛为平均不低于 94%、单篇不低于 90%、DTD 通过率 100%。可通过以下命令复现并更新 `docs/官方样例对比报告.md`：
+当前五篇官方样例自动转换结果：平均语义相似度 **96.6%**，最低单篇 **95%**，JATS Publishing 1.3 MathML3 DTD 通过率 **100%**。最新优化包含图表题注续行合并、图后风险人数小表识别、表注 `table-wrap-foot` 输出、caption 内交叉引用恢复、单位 `<aff><label>`、未编号一级章节 `<label>` 与编号章节 label/title 拆分输出、紧凑英文期刊参考文献尾部与 DOI URL 解析、逗号分隔英文期刊参考文献解析、结构化参考文献原始 `mixed-citation` 保真输出，以及 `fig1/tab9` 与 `fig001/tab009` 这类等价目标 ID 的语义归一。旧版 Word 预转换后的 `Heading1/Heading 2/标题3` 等命名样式可恢复章节层级；长正文中的多张内嵌公式图片不会被误判为多幅独立插图；带编号和公式上下文的图片可降级为 `image_formula`；紧邻图题的紧凑三列表图例不会混入正文表格。评测同时细分图表数量、题注、章节归属，以及公式数量、内容和章节归属；默认验收门槛为平均不低于 94%、单篇不低于 90%、DTD 通过率 100%。可通过以下命令复现并更新 `docs/官方样例对比报告.md`：
 
-解析器还会区分 `Original Research` 等文章类型标签与真实标题，避免把 `Fig. 1 shows ...`、`Table 2 presents ...` 一类正文叙述误判为题注；作者识别支持普通数字/上标单位标记、学位后缀和 `Author information` 标签，单位识别同时利用文本与 Word `Affiliation` 样式。关键词后、首个正文标题前的图片按 `auxiliary_media` 保留并进入 ZIP，不再误生成正文 `<fig>`；长数字开头正文不会误判为章节，`Main Findings` 等常见讨论子标题按层级恢复。参考文献边界支持 `References and Notes`，作者年份制引文支持全名、`et al.`、叙述式引用及括号内分号分隔的多篇引用。所有作者年份引用都必须同时匹配参考文献中的第一作者与年份才会生成 `<xref>`，无法可靠匹配时保留原文。
+解析器还会区分 `Original Research` 等文章类型标签与真实标题，支持旧版 Word 转换后常见的多行标题合并、姓名首字母作者行、整体偏移的标题样式和误继承标题样式的长正文；同时避免把 `Fig. 1 shows ...`、`Table 2 presents ...` 一类正文叙述误判为题注。作者识别支持普通数字/上标单位标记、学位后缀和 `Author information` 标签，单位识别同时利用文本与 Word `Affiliation` 样式。关键词后、首个正文标题前以及文末图形摘要图片按 `auxiliary_media` 保留并进入 ZIP，不再误生成正文 `<fig>`；小型图例表不会误生成 `table-wrap`，缺失表题但表头语义明确的表格可保守补充题注。旧文档中的图片公式会作为 `image_formula` 输出合法 `disp-formula/graphic` 并标记人工复核，Scheme 标签与图题正文会分离。参考文献边界支持 `References and Notes`，作者年份制引文支持全名、`et al.`、叙述式引用及括号内分号分隔的多篇引用。所有作者年份引用都必须同时匹配参考文献中的第一作者与年份才会生成 `<xref>`，无法可靠匹配时保留原文。
 
 ```bash
 cd backend
@@ -59,6 +60,7 @@ docker compose up --build
 ```
 
 Docker 前端 Nginx 已设置 `client_max_body_size 100m`，可支持 5 篇官方样例一次性批量上传。
+后端镜像内置 LibreOffice Writer 与中英文字体，Docker 环境可直接上传 `.doc`。本机开发模式如需处理 `.doc`，需安装 LibreOffice 并确保 `soffice` 可执行，或通过 `WORD2JATS_SOFFICE` 指向 `soffice.exe`；仅处理 `.docx` 时不需要 LibreOffice。
 
 访问：
 
@@ -106,7 +108,7 @@ npm run build
 
 ## 使用流程
 
-1. 选择期刊 Profile，上传 DOCX 或一键加载官方样例。
+1. 选择期刊 Profile，上传 `.doc`/`.docx` 或一键加载官方样例。
 2. 查看结构化 JSON、JATS XML、校验结果和质量报告。
 3. 在“文档流对照”查看原文节点到 JATS 标签的映射。
 4. 在“图表预览”核对图片、表格、题注、引用和 JATS 片段。
@@ -146,6 +148,7 @@ npm run build
 ## 当前真实限制
 
 - 启发式规则面对复杂排版、多作者多单位映射时仍可能需要人工校正。
+- `.doc` 通过 LibreOffice 进行确定性预转换，并非 `python-docx` 原生读取；转换响应中的 `source_format` 和 `preprocessing` 会记录转换器。极旧的 OLE、损坏文档、嵌入式 Equation Editor/OLE 对象仍可能在预转换时降级为图片或丢失语义。
 - 作者年份制引用在同作者同年歧义、缺失年份或非标准姓名顺序下可能保留原文并提示复核。
 - 不保证覆盖全部 Office Math；复杂嵌套矩阵、复杂分段、多重重音和未知 OMML 子结构会标记 `partial/failed`。
 - 图片公式暂不支持 OCR，系统不调用商业 API。

@@ -703,6 +703,38 @@ def test_generator_builds_table_wrap_foot_for_notes():
     assert [etree.QName(child).localname for child in table_wrap][-1] == "table-wrap-foot"
 
 
+def test_generator_uses_tbody_for_single_row_table():
+    article = {
+        "title": "Single row table",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "Abstract",
+        "keywords": ["table", "JATS", "DTD"],
+        "sections": [{"title": "Results", "level": 1, "paragraphs": ["Text"]}],
+        "figures": [],
+        "tables": [{
+            "id": "tab1",
+            "caption": "Table 1. One row",
+            "rows": [["Only cell"]],
+            "section_index": 0,
+        }],
+        "lists": [],
+        "formulas": [],
+        "references": [],
+        "journal_id": "W2J",
+        "journal_title": "Word2JATS Test Journal",
+        "publisher_name": "Word2JATS",
+        "issn": "1234-5678",
+    }
+
+    xml = JatsGenerator().generate(article)
+    root = etree.fromstring(xml.encode("utf-8"))
+
+    assert not root.xpath("//table/thead")
+    assert root.xpath("string(//table/tbody/tr/td)") == "Only cell"
+    assert ArticleValidator().schema_validator.validate(xml)["jats_schema_valid"] is True
+
+
 def test_generator_separates_float_labels_from_caption_text():
     article = {
         "title": "Float labels",

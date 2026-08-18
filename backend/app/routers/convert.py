@@ -21,6 +21,7 @@ from app.services.docx_parser import DocxParser
 from app.services.flow_view_builder import FlowViewBuilder
 from app.services.jats_generator import JatsGenerator
 from app.services.jats_auto_fixer import JatsAutoFixer
+from app.services.legacy_doc_converter import LegacyDocConverter
 from app.services.official_xml_comparator import OfficialXmlComparator
 from app.services.package_exporter import PackageExporter
 from app.services.profile_loader import ProfileLoader
@@ -37,6 +38,7 @@ profile_loader = ProfileLoader()
 quality_scorer = QualityScorer()
 flow_view_builder = FlowViewBuilder()
 visual_preview_builder = VisualPreviewBuilder()
+legacy_doc_converter = LegacyDocConverter()
 SAMPLE_ROOT = Path(__file__).resolve().parents[3] / "sample_documents"
 OFFICIAL_SAMPLE_ROOT = Path(__file__).resolve().parents[3] / "样例-最新版"
 DEMO_DOCUMENT_NAMES = (
@@ -125,16 +127,33 @@ def _processing_stats(
 
 async def _convert_upload(file: UploadFile, profile_name: str = "default") -> dict:
     started_at = time.perf_counter()
-    if not file.filename or Path(file.filename).suffix.lower() != ".docx":
-        raise ValueError("仅支持 .docx 文件。")
+    source_suffix = Path(file.filename or "").suffix.lower()
+    if not file.filename or source_suffix not in {".doc", ".docx"}:
+        raise ValueError("仅支持 .doc 或 .docx 文件。")
     work_dir = TEMP_ROOT / uuid4().hex
     source = await save_upload(file, work_dir / safe_filename(file.filename))
+    parse_source = source
+    preprocessing = {
+        "source_format": source_suffix.lstrip("."),
+        "converted": False,
+        "converter": "",
+        "intermediate_format": "",
+    }
     try:
+        if source_suffix == ".doc":
+            parse_source = legacy_doc_converter.convert(source, work_dir / "converted")
+            preprocessing.update({
+                "converted": True,
+                "converter": "LibreOffice Headless",
+                "intermediate_format": "docx",
+            })
         profile = profile_loader.load(profile_name)
-        parser = DocxParser(source, work_dir / "media", profile)
+        parser = DocxParser(parse_source, work_dir / "media", profile)
         article = parser.parse()
     finally:
         source.unlink(missing_ok=True)
+        if parse_source != source:
+            parse_source.unlink(missing_ok=True)
     xml, validation, quality_report = _generate_outputs(article, profile)
     official_comparison = _compare_with_official_sample(file.filename, xml)
     visual_preview_builder.enrich(article, work_dir.name, quality_report)
@@ -151,6 +170,11 @@ async def _convert_upload(file: UploadFile, profile_name: str = "default") -> di
         for media in article.get("auxiliary_media", [])
         if media.get("path")
     )
+    media_paths.extend(
+        formula.get("path", "")
+        for formula in article.get("formulas", [])
+        if formula.get("path")
+    )
     return {
         "success": True,
         "conversion_id": work_dir.name,
@@ -166,6 +190,8 @@ async def _convert_upload(file: UploadFile, profile_name: str = "default") -> di
         ),
         "media_paths": media_paths,
         "official_comparison": official_comparison,
+        "source_format": preprocessing["source_format"],
+        "preprocessing": preprocessing,
     }
 
 
@@ -201,7 +227,7 @@ async def batch_convert_docx(
 ) -> dict:
     results = []
     for file in files:
-        filename = file.filename or "unnamed.docx"
+        filename = file.filename or "unnamed.doc"
         try:
             converted = await _convert_upload(file, profile)
             results.append({

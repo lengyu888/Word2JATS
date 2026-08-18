@@ -124,6 +124,45 @@ def test_convert_endpoint_returns_all_outputs():
     assert any(item["jats_tag"] == "article-title" for item in payload["article"]["document_flow_view"])
     assert len(payload["conversion_id"]) == 32
     assert isinstance(payload["media_paths"], list)
+    assert payload["source_format"] == "docx"
+    assert payload["preprocessing"]["converted"] is False
+
+
+def test_convert_endpoint_accepts_legacy_doc_via_preprocessor(
+    tmp_path, monkeypatch
+):
+    import app.routers.convert as convert_module
+
+    def fake_convert(source, output_dir):
+        output = Path(output_dir) / f"{Path(source).stem}.docx"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(build_sample_docx())
+        return output
+
+    monkeypatch.setattr(
+        convert_module.legacy_doc_converter, "convert", fake_convert
+    )
+    response = client.post(
+        "/api/convert",
+        files={
+            "file": (
+                "legacy-paper.doc",
+                b"legacy-binary-word",
+                "application/msword",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["article"]["title"] == "面向出版的智能结构化转换"
+    assert payload["source_format"] == "doc"
+    assert payload["preprocessing"] == {
+        "source_format": "doc",
+        "converted": True,
+        "converter": "LibreOffice Headless",
+        "intermediate_format": "docx",
+    }
 
 
 def test_convert_figures_include_secure_media_url(tmp_path):
@@ -197,13 +236,14 @@ def test_media_endpoint_rejects_invalid_or_missing_paths():
     assert client.get(f"/api/media/{conversion_id}/..%2Fsecret.png").status_code in {400, 404}
 
 
-def test_convert_endpoint_rejects_non_docx():
+def test_convert_endpoint_rejects_non_word_format():
     response = client.post(
         "/api/convert",
         files={"file": ("paper.txt", b"not a docx", "text/plain")},
     )
 
     assert response.status_code == 400
+    assert "仅支持 .doc 或 .docx 文件" in response.json()["detail"]
 
 
 def test_generate_xml_endpoint_uses_corrected_article():
@@ -378,7 +418,37 @@ def test_batch_convert_returns_success_and_failure_per_file():
     assert payload["results"][0]["article"]["title"] == "面向出版的智能结构化转换"
     assert payload["results"][1]["filename"] == "invalid.txt"
     assert payload["results"][1]["status"] == "failed"
-    assert "仅支持 .docx 文件" in payload["results"][1]["error"]
+    assert "仅支持 .doc 或 .docx 文件" in payload["results"][1]["error"]
+
+
+def test_batch_convert_accepts_legacy_doc_via_preprocessor(monkeypatch):
+    import app.routers.convert as convert_module
+
+    def fake_convert(source, output_dir):
+        output = Path(output_dir) / f"{Path(source).stem}.docx"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(build_sample_docx())
+        return output
+
+    monkeypatch.setattr(
+        convert_module.legacy_doc_converter, "convert", fake_convert
+    )
+    response = client.post(
+        "/api/batch-convert",
+        files=[
+            ("files", ("legacy-one.doc", b"legacy-one", "application/msword")),
+            ("files", ("modern.docx", build_sample_docx(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+        ],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    legacy, modern = payload["results"]
+    assert legacy["source_format"] == "doc"
+    assert legacy["preprocessing"]["converted"] is True
+    assert modern["source_format"] == "docx"
+    assert modern["preprocessing"]["converted"] is False
 
 
 def test_export_package_contains_required_files_and_media(tmp_path):

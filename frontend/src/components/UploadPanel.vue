@@ -41,7 +41,7 @@ function convert() {
     <el-upload
       drag
       action="#"
-      accept=".docx"
+      accept=".doc,.docx"
       multiple
       :auto-upload="false"
       :on-change="handleChange"
@@ -49,7 +49,7 @@ function convert() {
       class="uploader"
     >
       <el-icon class="upload-icon"><DocumentAdd /></el-icon>
-      <div class="drop-title">拖入一个或多个 .docx 文件</div>
+      <div class="drop-title">拖入一个或多个 .doc / .docx 文件</div>
       <div class="drop-subtitle">支持批量转换，或点击浏览本地稿件</div>
     </el-upload>
 

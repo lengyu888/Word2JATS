@@ -21,6 +21,215 @@ def append_omml(paragraph, text: str) -> None:
     paragraph._p.append(math)
 
 
+def test_multiline_title_precedes_initialed_author_list(tmp_path):
+    path = tmp_path / "multiline-title.docx"
+    document = Document()
+    title = document.add_paragraph("Investigating Solvent Extraction")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Using a Sustainable Extractant")
+    document.add_paragraph("F. Smith1*, K. Jones2")
+    document.add_paragraph("1 Department of Chemistry, Example University")
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: solvent; extraction; JATS")
+    document.add_paragraph("1. Introduction")
+    document.add_paragraph("Body text.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["title"] == (
+        "Investigating Solvent Extraction Using a Sustainable Extractant"
+    )
+    assert [author["name"] for author in article["authors"]] == [
+        "F. Smith", "K. Jones"
+    ]
+
+
+def test_legacy_heading_style_offset_and_long_body_recovery(tmp_path):
+    path = tmp_path / "legacy-heading-offset.docx"
+    document = Document()
+    title = document.add_paragraph("Legacy Heading Recovery")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: legacy; headings; JATS")
+    level_two = document.styles.add_style("2", 1)
+    level_three = document.styles.add_style("3", 1)
+    level_four = document.styles.add_style("4", 1)
+    heading = document.add_paragraph("Introduction")
+    heading.style = level_two
+    subheading = document.add_paragraph("Experimental Design")
+    subheading.style = level_three
+    long_body = document.add_paragraph(" ".join(["Detailed body evidence"] * 35))
+    long_body.style = level_four
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert [(section["title"], section["level"]) for section in article["sections"]] == [
+        ("Introduction", 1), ("Experimental Design", 2)
+    ]
+    assert article["sections"][1]["paragraphs"] == [long_body.text]
+
+
+def test_named_heading_styles_restore_nested_section_levels(tmp_path):
+    path = tmp_path / "named-heading-levels.docx"
+    document = Document()
+    title = document.add_paragraph("Named Heading Recovery")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: headings; hierarchy; JATS")
+    document.add_heading("Introduction", level=1)
+    document.add_heading("Experimental Design", level=2)
+    document.add_heading("Sampling", level=3)
+    document.add_paragraph("Body evidence.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert [section["level"] for section in article["sections"]] == [1, 2, 3]
+    assert [section["label"] for section in article["sections"]] == [
+        "1.", "1.1", "1.1.1"
+    ]
+
+
+def test_multiple_inline_images_in_long_prose_do_not_become_figures(tmp_path):
+    image_path = tmp_path / "inline-equation.png"
+    image_path.write_bytes(make_png((30, 60, 90)))
+    path = tmp_path / "inline-image-prose.docx"
+    document = Document()
+    title = document.add_paragraph("Inline Formula Images")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: formulas; inline; JATS")
+    document.add_heading("Results", level=1)
+    paragraph = document.add_paragraph(
+        "The distribution coefficient was evaluated across every solvent condition "
+        "and the embedded expressions below retain their original inline positions "
+        "without representing standalone figures. "
+    )
+    paragraph.add_run().add_picture(str(image_path), width=Inches(0.3))
+    paragraph.add_run(" The resulting trend remained stable across replicates. ")
+    paragraph.add_run().add_picture(str(image_path), width=Inches(0.3))
+    document.save(path)
+
+    flow = DocumentFlowParser(path).parse()
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    inline_nodes = [node for node in flow if node.get("contains_inline_math")]
+    assert len(inline_nodes) == 1
+    assert len(inline_nodes[0]["inline_media_paths"]) == 1
+    assert article["figures"] == []
+    assert len(article["sections"][0]["paragraphs"]) == 1
+
+
+def test_numbered_context_image_is_classified_as_formula(tmp_path):
+    image_path = tmp_path / "equation.png"
+    image_path.write_bytes(make_png((90, 60, 30)))
+    path = tmp_path / "numbered-image-formula.docx"
+    document = Document()
+    title = document.add_paragraph("Numbered Image Formula")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: formulas; images; JATS")
+    document.add_heading("Results", level=1)
+    paragraph = document.add_paragraph("The extraction constant is defined as (2)")
+    paragraph.add_run().add_picture(str(image_path), width=Inches(1))
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["figures"] == []
+    assert len(article["formulas"]) == 1
+    assert article["formulas"][0]["type"] == "image_formula"
+
+
+def test_three_column_chart_legend_before_caption_is_not_a_table(tmp_path):
+    path = tmp_path / "three-column-chart-legend.docx"
+    document = Document()
+    title = document.add_paragraph("Chart Legend Recovery")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: figures; legends; JATS")
+    document.add_heading("Results", level=1)
+    legend = document.add_table(rows=4, cols=3)
+    values = ("Toluene", "Chloroform", "MIBK")
+    for row in legend.rows:
+        for index, cell in enumerate(row.cells):
+            cell.text = values[index]
+    document.add_paragraph("Figure 1. Solvent comparison")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["tables"] == []
+    assert len(article["figures"]) == 1
+    assert article["figures"][0]["caption"] == "Figure 1. Solvent comparison"
+
+
+def test_image_formula_is_preserved_as_jats_graphic(tmp_path):
+    image_path = tmp_path / "equation.png"
+    image_path.write_bytes(make_png((20, 80, 120)))
+    path = tmp_path / "image-formula.docx"
+    document = Document()
+    title = document.add_paragraph("Image Formula Recovery")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: formula; image; JATS")
+    document.add_paragraph("1. Methods")
+    formula = document.add_paragraph()
+    formula.add_run().add_picture(str(image_path), width=Inches(1))
+    formula.add_run(" (1)")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+    article.update({
+        "journal_id": "W2J",
+        "journal_title": "Word2JATS Test Journal",
+        "publisher_name": "Word2JATS",
+        "issn": "1234-5678",
+    })
+    xml = JatsGenerator().generate(article)
+    schema = ArticleValidator().schema_validator.validate(xml)
+
+    assert article["figures"] == []
+    assert article["formulas"][0]["type"] == "image_formula"
+    assert article["formulas"][0]["label"] == "(1)"
+    assert article["formulas"][0]["path"].endswith(".png")
+    assert '<disp-formula id="eq1">' in xml
+    assert '<graphic xlink:href="' in xml
+    assert schema["jats_schema_valid"] is True
+
+
+def test_small_legend_table_before_figure_caption_is_not_article_table(tmp_path):
+    path = tmp_path / "figure-legend.docx"
+    document = Document()
+    title = document.add_paragraph("Figure Legend Recovery")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: figure; legend; JATS")
+    document.add_paragraph("1. Results")
+    legend = document.add_table(rows=2, cols=2)
+    legend.cell(0, 0).text = "Control"
+    legend.cell(0, 1).text = "Treatment"
+    legend.cell(1, 0).text = "Blue"
+    legend.cell(1, 1).text = "Red"
+    document.add_paragraph("Fig. 1: Extraction performance")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert article["tables"] == []
+    assert article["figures"][0]["caption"] == "Fig. 1: Extraction performance"
+
+
 def test_article_title_style_beats_article_type_and_correspondence(tmp_path):
     path = tmp_path / "styled-front.docx"
     document = Document()

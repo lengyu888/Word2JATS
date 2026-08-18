@@ -35,6 +35,16 @@ def test_splits_english_figure_and_table_labels():
     }
 
 
+def test_splits_scheme_label_from_figure_caption_body():
+    assert CaptionNormalizer().split(
+        "Scheme 1: Structure of the complex", "figure"
+    ) == {
+        "label": "Scheme 1",
+        "caption": "Structure of the complex",
+        "status": "normalized",
+    }
+
+
 def test_splits_chinese_compound_label_and_preserves_unlabeled_text():
     normalizer = CaptionNormalizer()
 

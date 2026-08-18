@@ -39,6 +39,7 @@ def collect_release_issues(root: Path | None = None) -> list[str]:
         "frontend/README.md",
         "docker-compose.yml",
         "backend/app/main.py",
+        "backend/app/services/legacy_doc_converter.py",
         "backend/evaluate_official_samples.py",
         "backend/schemas/JATS-Publishing-1-3-MathML3-DTD/JATS-journalpublishing1-3-mathml3.dtd",
         "frontend/package.json",
@@ -60,6 +61,10 @@ def collect_release_issues(root: Path | None = None) -> list[str]:
     for relative in FORBIDDEN_TRACKED:
         if relative in tracked:
             issues.append(f"不应提交的本地交付物已被 Git 跟踪：{relative}")
+
+    dockerfile = repo / "backend/Dockerfile"
+    if dockerfile.is_file() and "libreoffice-writer" not in dockerfile.read_text(encoding="utf-8"):
+        issues.append("backend/Dockerfile 未安装 LibreOffice Writer，容器无法转换旧版 .doc")
     return issues
 
 
@@ -88,6 +93,7 @@ def main() -> int:
     print("- Official sample evaluator: ready")
     print("- Local JATS 1.3 MathML3 DTD: ready")
     print("- Docker and frontend entry points: ready")
+    print("- Legacy DOC conversion runtime: ready")
     print("- Excluded local deliverables: not tracked")
     return 0
 

@@ -2,7 +2,9 @@ import axios from 'axios'
 
 const client = axios.create({
   baseURL: '/api',
-  timeout: 120000,
+  // Legacy .doc conversion starts LibreOffice before the normal DOCX pipeline.
+  // Keep the client alive for batch jobs and slower competition machines.
+  timeout: 600000,
 })
 
 export async function convertDocument(file, profile = 'default') {

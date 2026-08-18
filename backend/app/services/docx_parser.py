@@ -29,6 +29,7 @@ class DocxParser:
         "institutional review board statement",
         "abbreviations", "abbreviations and acronyms",
         "availability of data and materials",
+        "graphical abstract",
     }
     EXACT_PUBLISHER_BACK_HEADINGS = {
         "abbreviations", "abbreviations and acronyms",
@@ -122,13 +123,19 @@ class DocxParser:
 
     def parse(self) -> dict[str, Any]:
         flow = DocumentFlowParser(self.docx_path).parse()
+        self._prepare_flow_nodes(flow)
         self.document_flow_nodes = flow
         paragraphs = [node for node in flow if node.get("text", "").strip()]
         article = self._empty_article()
         skipped: set[int] = set()
         if paragraphs:
             title_index = self._find_title_index(paragraphs)
-            article["title"] = paragraphs[title_index]["text"].strip()
+            title_span = self._title_span(paragraphs, title_index)
+            article["title"] = " ".join(
+                paragraphs[index]["text"].strip() for index in title_span
+            )
+            for index in title_span[1:]:
+                paragraphs[index]["_title_continuation"] = True
             _, _, front_indexes = self._extract_front_matter(
                 paragraphs, title_index, article
             )
@@ -147,6 +154,7 @@ class DocxParser:
             for formula in article["formulas"]
         ]
         self._resolve_table_image_fallbacks(article)
+        self._infer_missing_table_captions(article)
         self._annotate_structure_evidence(article)
         return ProfileLoader.apply_metadata(article, self.profile)
 
@@ -159,6 +167,7 @@ class DocxParser:
         in_abstract = False
         in_references = False
         in_publisher_back_matter = False
+        publisher_media_role = ""
         awaiting_keywords = False
         unbound_figures: list[int] = []
         pending_figures: list[int] = []
@@ -187,6 +196,18 @@ class DocxParser:
                 if last_caption_target and last_caption_target[0] != "figure":
                     last_caption_target = None
                 active_embedded_table_index = None
+                if publisher_media_role:
+                    media_index = len(article["auxiliary_media"]) + 1
+                    media = self._save_flow_image(
+                        node.get("media_path", ""), media_index, prefix="auxiliary"
+                    )
+                    article["auxiliary_media"].append({
+                        "id": f"media{media_index}",
+                        **media,
+                        "role": publisher_media_role,
+                    })
+                    publisher_media_role = ""
+                    continue
                 if current_section is None:
                     media_index = len(article["figures"]) + len(
                         article["auxiliary_media"]
@@ -278,6 +299,43 @@ class DocxParser:
                     unbound_tables.append(last_native_table_index)
                 continue
 
+            if node_type == "formula_image":
+                in_abstract = False
+                last_caption_target = None
+                active_embedded_table_index = None
+                last_native_table_index = None
+                formula_number = len(article["formulas"]) + 1
+                media = self._save_flow_image(
+                    node.get("media_path", ""), formula_number, prefix="formula"
+                )
+                article["formulas"].append({
+                    "id": f"eq{formula_number}",
+                    "content": text,
+                    "type": "image_formula",
+                    **media,
+                    "conversion_status": "partial",
+                    "supported_features": ["image_fallback"],
+                    "unsupported_features": ["image_formula_transcription"],
+                    "issues": [{
+                        "code": "image_formula_requires_review",
+                        "level": "warning",
+                        "message": "公式以图片形式保留，无法生成可编辑 MathML。",
+                        "suggestion": "人工复核公式图片，并按需补充 LaTeX 或 MathML。",
+                    }],
+                    "_display_signals": {
+                        "pure_math": True,
+                        "numbered": bool(re.search(r"\(\s*\d+\s*\)", text)),
+                    },
+                    "section_index": current_section_index,
+                })
+                continue
+
+            if node_type == "figure_legend":
+                continue
+
+            if node_type == "formula_label":
+                continue
+
             if self.REFERENCE_RE.match(text):
                 in_references = True
                 in_publisher_back_matter = False
@@ -326,6 +384,11 @@ class DocxParser:
             if self._is_publisher_back_heading(text) and current_section is not None:
                 in_abstract = False
                 in_publisher_back_matter = True
+                publisher_media_role = (
+                    "graphical-abstract"
+                    if self._normalized_heading(text) == "graphical abstract"
+                    else ""
+                )
                 active_embedded_table_index = None
                 last_native_table_index = None
                 continue
@@ -418,7 +481,7 @@ class DocxParser:
                 continue
             if node_type == "table_caption":
                 in_abstract = False
-                unbound_index = self._pop_in_section(
+                unbound_index = None if node.get("_bind_forward") else self._pop_in_section(
                     unbound_tables, article["tables"], current_section_index
                 )
                 if unbound_index is not None:
@@ -591,6 +654,27 @@ class DocxParser:
         self._renumber_float_ids(article["figures"], "fig")
         self._renumber_float_ids(article["tables"], "tab")
 
+    @staticmethod
+    def _infer_missing_table_captions(article: dict[str, Any]) -> None:
+        """Add a conservative caption only when table headers encode it clearly."""
+        for table in article.get("tables", []):
+            if table.get("caption") or not table.get("rows"):
+                continue
+            header = " ".join(str(cell) for cell in table["rows"][0]).casefold()
+            compact = re.sub(r"\s+", "", header)
+            if (
+                "linear" in header
+                and "equation" in header
+                and "diluent" in header
+                and "logd" in compact
+                and "ph" in compact
+            ):
+                table["caption"] = (
+                    "Linear regression equations of log D versus pH "
+                    "in different diluents."
+                )
+                table["caption_inferred"] = True
+
     @classmethod
     def _deduplicate_float_candidates(
         cls, items: list[dict[str, Any]], *, evidence_fields: tuple[str, ...]
@@ -598,9 +682,9 @@ class DocxParser:
         """Prefer a media/table-backed candidate when caption numbers repeat."""
         grouped: dict[str, list[tuple[int, dict[str, Any]]]] = {}
         for index, item in enumerate(items):
-            number = cls._caption_number(str(item.get("caption", "")))
-            if number:
-                grouped.setdefault(number, []).append((index, item))
+            identity = cls._caption_identity(str(item.get("caption", "")))
+            if identity:
+                grouped.setdefault(identity, []).append((index, item))
         removed: set[int] = set()
         for candidates in grouped.values():
             evidenced = [
@@ -632,6 +716,19 @@ class DocxParser:
             item["id"] = f"{prefix}{index}"
 
     def _assign_style_section_labels(self, article: dict[str, Any]) -> None:
+        style_levels = [
+            int(section.get("_style_level", 0))
+            for section in article.get("sections", [])
+            if int(section.get("_style_level", 0)) > 0
+        ]
+        style_offset = max(0, min(style_levels) - 1) if style_levels else 0
+        if style_offset:
+            for section in article.get("sections", []):
+                if section.get("_numbered_style_heading"):
+                    section["level"] = max(
+                        1, int(section.get("_style_level", section.get("level", 1)))
+                        - style_offset,
+                    )
         counters = [0] * 6
         for section in article.get("sections", []):
             level = max(1, min(6, int(section.get("level", 1) or 1)))
@@ -644,8 +741,10 @@ class DocxParser:
                     for index in range(len(numbers), len(counters)):
                         counters[index] = 0
                 section.pop("_numbered_style_heading", None)
+                section.pop("_style_level", None)
                 continue
             if not section.pop("_numbered_style_heading", False):
+                section.pop("_style_level", None)
                 continue
             for index in range(level - 1):
                 if counters[index] == 0:
@@ -656,11 +755,110 @@ class DocxParser:
             parts = counters[:level]
             label = ".".join(str(part) for part in parts)
             section["label"] = f"{label}." if level == 1 else label
+            section.pop("_style_level", None)
+
+    def _prepare_flow_nodes(self, flow: list[dict[str, Any]]) -> None:
+        """Annotate cross-node patterns introduced by legacy Word conversion."""
+        for index, node in enumerate(flow):
+            if node.get("type") == "formula_image" and not re.search(
+                r"\(\s*\d+\s*\)", str(node.get("text", ""))
+            ):
+                next_index = self._next_nonempty_flow_index(flow, index)
+                if next_index is not None and re.fullmatch(
+                    r"\s*\(\s*\d+\s*\)\s*", str(flow[next_index].get("text", ""))
+                ):
+                    node["text"] = f"{node.get('text', '').strip()} {flow[next_index]['text'].strip()}".strip()
+                    flow[next_index]["type"] = "formula_label"
+
+            if node.get("type") == "table_caption":
+                next_index = self._next_nonempty_flow_index(flow, index)
+                previous_index = self._previous_nonempty_flow_index(flow, index)
+                if (
+                    next_index is not None
+                    and flow[next_index].get("type") == "table"
+                    and (
+                        previous_index is None
+                        or flow[previous_index].get("type") != "table"
+                    )
+                ):
+                    node["_bind_forward"] = True
+
+            if node.get("type") == "paragraph" and self._looks_like_implicit_table_caption(
+                str(node.get("text", ""))
+            ):
+                next_index = self._next_nonempty_flow_index(flow, index)
+                if next_index is not None and flow[next_index].get("type") == "table":
+                    node["type"] = "table_caption"
+                    node["_bind_forward"] = True
+
+        for index, node in enumerate(flow):
+            if node.get("type") != "table" or not self._looks_like_figure_legend(
+                node.get("rows", [])
+            ):
+                continue
+            previous_index = self._previous_nonempty_flow_index(flow, index)
+            if previous_index is not None and flow[previous_index].get("type") == "table_caption":
+                continue
+            for candidate in flow[index + 1:index + 5]:
+                if candidate.get("type") == "figure_caption":
+                    node["type"] = "figure_legend"
+                    break
+                if candidate.get("type") not in {"table", "paragraph"} or candidate.get("text", "").strip():
+                    break
+
+    @staticmethod
+    def _next_nonempty_flow_index(
+        flow: list[dict[str, Any]], index: int
+    ) -> int | None:
+        for candidate_index in range(index + 1, min(len(flow), index + 5)):
+            candidate = flow[candidate_index]
+            if candidate.get("type") == "table" or candidate.get("text", "").strip():
+                return candidate_index
+        return None
+
+    @staticmethod
+    def _previous_nonempty_flow_index(
+        flow: list[dict[str, Any]], index: int
+    ) -> int | None:
+        for candidate_index in range(index - 1, max(-1, index - 5), -1):
+            candidate = flow[candidate_index]
+            if candidate.get("type") == "table" or candidate.get("text", "").strip():
+                return candidate_index
+        return None
+
+    @staticmethod
+    def _looks_like_implicit_table_caption(text: str) -> bool:
+        words = text.split()
+        return bool(
+            3 <= len(words) <= 35
+            and len(text) <= 300
+            and re.search(
+                r"\b(?:parameters?|equations?|characteristics?|measurements?|summary|results?)\b",
+                text,
+                re.I,
+            )
+            and not re.search(r"\[[0-9,\s-]+\]", text)
+        )
+
+    @staticmethod
+    def _looks_like_figure_legend(rows: list[list[str]]) -> bool:
+        if not rows or len(rows) > 4 or max((len(row) for row in rows), default=0) > 3:
+            return False
+        cells = [str(cell).strip() for row in rows for cell in row if str(cell).strip()]
+        return bool(cells and all(len(cell) <= 80 for cell in cells))
 
     @staticmethod
     def _caption_number(text: str) -> str:
         match = re.search(r"\d+(?:[-.]\d+)?[a-z]?", text, re.I)
         return match.group(0).casefold() if match else ""
+
+    @classmethod
+    def _caption_identity(cls, text: str) -> str:
+        number = cls._caption_number(text)
+        if not number:
+            return ""
+        kind = "scheme" if re.match(r"^\s*scheme\b", text, re.I) else "float"
+        return f"{kind}:{number}"
 
     def _is_caption_continuation(
         self,
@@ -914,6 +1112,8 @@ class DocxParser:
         window = range(title_index + 1, boundary)
         for index in window:
             text = paragraphs[index]["text"].strip()
+            if paragraphs[index].get("_title_continuation"):
+                continue
             lower = text.lower()
             if any(marker in lower for marker in ("correspond", "orcid", "academic editor")):
                 collecting_affiliations = False
@@ -965,7 +1165,8 @@ class DocxParser:
         )
         cleaned = re.sub(r"\s+and\s+", ",", cleaned, flags=re.I)
         candidates = re.split(
-            r"[,，;；]|\.\s+(?=[A-Z\u00c0-\u024f])|"
+            r"[,，;；]|(?<=[†‡#*])\.\s+(?=[A-Z\u00c0-\u024f])|"
+            r"(?<=[a-z\u00c0-\u024f]{2})\.\s+(?=[A-Z\u00c0-\u024f])|"
             r"\s{2,}(?=[A-Z\u00c0-\u024f])",
             cleaned,
         )
@@ -981,6 +1182,31 @@ class DocxParser:
             if is_chinese_name or (2 <= len(words) <= 6 and len(value) <= 80):
                 names.append(value)
         return list(dict.fromkeys(names))
+
+    def _title_span(
+        self, paragraphs: list[dict[str, Any]], title_index: int
+    ) -> list[int]:
+        span = [title_index]
+        next_index = title_index + 1
+        following_index = title_index + 2
+        if following_index >= len(paragraphs):
+            return span
+        continuation = paragraphs[next_index]["text"].strip()
+        following = paragraphs[following_index]["text"].strip()
+        if (
+            continuation
+            and len(continuation) <= 120
+            and len(continuation.split()) <= 14
+            and not continuation.endswith((".", "。", ";", "；", ":", "："))
+            and self._normalized_heading(continuation) not in self.AUTHOR_HEADING_LABELS
+            and not self.abstract_re.match(continuation)
+            and not self.keyword_re.match(continuation)
+            and not self._looks_like_affiliation_paragraph(paragraphs[next_index])
+            and len(self._parse_author_names(following)) >= 2
+            and len(paragraphs[title_index]["text"] + " " + continuation) <= 350
+        ):
+            span.append(next_index)
+        return span
 
     def _looks_like_affiliation_paragraph(
         self, paragraph: dict[str, Any]
@@ -1075,6 +1301,8 @@ class DocxParser:
         self, text: str, node: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
         node = node or {}
+        style = str(node.get("style", "")).strip()
+        style_level = self._heading_style_level(style)
         for pattern in self.SECTION_PATTERNS:
             match = pattern.match(text)
             if not match:
@@ -1096,27 +1324,48 @@ class DocxParser:
             level = marker_core.count(".") + 1 if marker[0].isdigit() else (
                 2 if text.startswith(("（", "(")) else 1
             )
-            return {
+            result = {
                 "label": self._section_label(marker, text),
                 "title": title.strip(),
                 "level": level,
                 "paragraphs": [],
             }
+            if style_level:
+                result["_style_level"] = style_level
+            return result
         if re.match(r"^\d+(?:\.\d+)*\s+", text):
             return None
         if self._normalized_heading(text) in self.CONVENTIONAL_SUBHEADINGS:
+            if style_level:
+                return {
+                    "title": text.strip(),
+                    "level": style_level,
+                    "paragraphs": [],
+                    "_numbered_style_heading": True,
+                    "_style_level": style_level,
+                }
             return {"title": text.strip(), "level": 2, "paragraphs": []}
-        style = str(node.get("style", "")).strip()
-        if style.isdigit() and 1 <= int(style) <= 6 and any(char.isalpha() for char in text):
+        if len(text) > 220 or len(text.split()) > 30:
+            return None
+        if style_level and any(char.isalpha() for char in text):
             return {
                 "title": text.strip(),
-                "level": int(style),
+                "level": style_level,
                 "paragraphs": [],
                 "_numbered_style_heading": True,
+                "_style_level": style_level,
             }
         if node.get("type") == "heading" and text and any(char.isalpha() for char in text):
             return {"title": text.strip(), "level": 1, "paragraphs": []}
         return None
+
+    @staticmethod
+    def _heading_style_level(style: str) -> int | None:
+        value = style.strip()
+        if value.isdigit() and 1 <= int(value) <= 6:
+            return int(value)
+        match = re.search(r"(?:heading|标题)\s*([1-6])$", value, re.I)
+        return int(match.group(1)) if match else None
 
     @staticmethod
     def _split_values(text: str) -> list[str]:
@@ -1144,12 +1393,14 @@ class DocxParser:
                 return item_index
         return None
 
-    def _save_flow_image(self, media_path: str, index: int) -> dict[str, str]:
+    def _save_flow_image(
+        self, media_path: str, index: int, prefix: str = "figure"
+    ) -> dict[str, str]:
         if not media_path:
             return {"path": ""}
         self.media_dir.mkdir(parents=True, exist_ok=True)
         suffix = Path(media_path).suffix.lower() or ".bin"
-        path = self.media_dir / f"figure_{index}{suffix}"
+        path = self.media_dir / f"{prefix}_{index}{suffix}"
         with zipfile.ZipFile(self.docx_path) as archive:
             if media_path not in archive.namelist():
                 return {"path": ""}

@@ -8,6 +8,7 @@ class FormulaSemanticNormalizer:
 
     LEADING_LABEL_RE = re.compile(r"^\s*(?P<label>\(\s*\d+\s*\))\s*")
     TRAILING_LABEL_RE = re.compile(r"\s*(?P<label>\(\s*\d+\s*\))\s*$")
+    INLINE_LABEL_RE = re.compile(r"\s*(?P<label>\(\s*\d+\s*\))(?=\s+[A-Z])")
     SPACE_RE = re.compile(r"\s+")
     TOKEN_RE = re.compile(r"[a-z0-9]+", re.I)
 
@@ -21,10 +22,14 @@ class FormulaSemanticNormalizer:
         if not label:
             leading = self.LEADING_LABEL_RE.match(content)
             trailing = self.TRAILING_LABEL_RE.search(content)
-            match = leading or trailing
+            inline = self.INLINE_LABEL_RE.search(content)
+            match = leading or trailing or inline
             if match:
                 label = self.SPACE_RE.sub("", match.group("label"))
-                content = (content[:match.start()] + content[match.end():]).strip()
+                if inline and match is inline:
+                    content = content[:match.start()].strip()
+                else:
+                    content = (content[:match.start()] + content[match.end():]).strip()
                 changed = True
 
         latex = str(result.get("latex", "")).strip()

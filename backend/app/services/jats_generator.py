@@ -111,16 +111,16 @@ class JatsGenerator:
             rows = table_data.get("rows", [])
             if rows:
                 table = etree.SubElement(table_wrap, "table")
-                thead = etree.SubElement(table, "thead")
-                header_row = etree.SubElement(thead, "tr")
-                for cell in rows[0]:
-                    cell_element = etree.SubElement(header_row, "th")
-                    self.xref_resolver.append_mixed_content(
-                        cell_element,
-                        str(cell),
-                        allowed_ids=self._allowed_xref_ids,
-                    )
                 if len(rows) > 1:
+                    thead = etree.SubElement(table, "thead")
+                    header_row = etree.SubElement(thead, "tr")
+                    for cell in rows[0]:
+                        cell_element = etree.SubElement(header_row, "th")
+                        self.xref_resolver.append_mixed_content(
+                            cell_element,
+                            str(cell),
+                            allowed_ids=self._allowed_xref_ids,
+                        )
                     tbody = etree.SubElement(table, "tbody")
                     for row in rows[1:]:
                         row_element = etree.SubElement(tbody, "tr")
@@ -131,6 +131,16 @@ class JatsGenerator:
                                 str(cell),
                                 allowed_ids=self._allowed_xref_ids,
                             )
+                else:
+                    tbody = etree.SubElement(table, "tbody")
+                    row_element = etree.SubElement(tbody, "tr")
+                    for cell in rows[0]:
+                        cell_element = etree.SubElement(row_element, "td")
+                        self.xref_resolver.append_mixed_content(
+                            cell_element,
+                            str(cell),
+                            allowed_ids=self._allowed_xref_ids,
+                        )
             elif table_data.get("path"):
                 etree.SubElement(
                     table_wrap,
@@ -165,6 +175,11 @@ class JatsGenerator:
             )
             if formula.get("label"):
                 etree.SubElement(disp, "label").text = formula["label"]
+            if formula.get("type") == "image_formula" and formula.get("path"):
+                etree.SubElement(
+                    disp, "graphic", attrib={self.XLINK_HREF: formula["path"]}
+                )
+                continue
             alternatives = etree.SubElement(disp, "alternatives")
             if formula.get("mathml"):
                 try:

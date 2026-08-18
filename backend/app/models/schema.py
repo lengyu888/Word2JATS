@@ -71,6 +71,8 @@ class Formula(BaseModel):
     omml: str = ""
     mathml: str = ""
     latex: str = ""
+    path: str = ""
+    preview_path: str = ""
     type: str = "plain_text"
     section_index: int = -1
     conversion_status: str = "success"
@@ -235,6 +237,13 @@ class ProcessingStats(BaseModel):
     auto_fix_rounds: int = 0
 
 
+class SourcePreprocessing(BaseModel):
+    source_format: str = "docx"
+    converted: bool = False
+    converter: str = ""
+    intermediate_format: str = ""
+
+
 class ConvertResponse(BaseModel):
     success: bool
     conversion_id: str
@@ -245,6 +254,8 @@ class ConvertResponse(BaseModel):
     processing_stats: ProcessingStats = Field(default_factory=ProcessingStats)
     media_paths: list[str] = Field(default_factory=list)
     official_comparison: dict = Field(default_factory=dict)
+    source_format: str = "docx"
+    preprocessing: SourcePreprocessing = Field(default_factory=SourcePreprocessing)
 
 
 class GenerateXmlRequest(BaseModel):
@@ -272,6 +283,8 @@ class BatchConvertItem(BaseModel):
     media_paths: list[str] = Field(default_factory=list)
     official_comparison: dict = Field(default_factory=dict)
     error: str = ""
+    source_format: str = ""
+    preprocessing: SourcePreprocessing = Field(default_factory=SourcePreprocessing)
 
 
 class BatchConvertResponse(BaseModel):

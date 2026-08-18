@@ -86,7 +86,7 @@ function downloadBlob(blob, filename) {
 function downloadXml(item) {
   downloadBlob(
     new Blob([item.xml], { type: 'application/xml;charset=utf-8' }),
-    `${item.filename.replace(/\.docx$/i, '') || 'article'}.xml`,
+    `${item.filename.replace(/\.docx?$/i, '') || 'article'}.xml`,
   )
 }
 
@@ -102,7 +102,7 @@ async function downloadPackage(item) {
       validation: item.validation,
       quality_report: item.quality_report,
     })
-    downloadBlob(blob, `${item.filename.replace(/\.docx$/i, '') || 'article'}-word2jats.zip`)
+    downloadBlob(blob, `${item.filename.replace(/\.docx?$/i, '') || 'article'}-word2jats.zip`)
     exportStatuses.value[key] = '已导出'
   } catch (error) {
     exportStatuses.value[key] = '导出失败'

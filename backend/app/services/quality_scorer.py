@@ -144,7 +144,12 @@ class QualityScorer:
         earned = 0.0
         for formula in formulas:
             formula_id = formula.get("id", "unknown")
-            content = formula.get("mathml") or formula.get("latex") or formula.get("content")
+            content = (
+                formula.get("mathml")
+                or formula.get("latex")
+                or formula.get("content")
+                or formula.get("path")
+            )
             status = formula.get("conversion_status", "success" if content else "failed")
             if not content:
                 self._issue(issues, "warning", "formula", f"article.formulas.{formula_id}", f"{formula_id} 没有可交付公式内容", "补充 MathML、LaTeX 或纯文本公式")

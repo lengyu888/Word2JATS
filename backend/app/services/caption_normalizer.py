@@ -5,7 +5,7 @@ class CaptionNormalizer:
     """Split supported float labels from editable caption prose."""
 
     FIGURE_RE = re.compile(
-        r"^\s*((?:fig(?:ure)?\.?)\s*\d+(?:[-.]\d+)?|图\s*\d+(?:[-－.]\d+)?)"
+        r"^\s*((?:fig(?:ure)?\.?|scheme)\s*\d+(?:[-.]\d+)?|图\s*\d+(?:[-－.]\d+)?)"
         r"\s*[:：.．-]?\s*",
         re.I,
     )

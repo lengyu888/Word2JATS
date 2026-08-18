@@ -38,7 +38,7 @@ class DocumentFlowParser:
         re.I,
     )
     FLOAT_CAPTION_RE = re.compile(
-        r"^\s*(?P<kind>\u56fe|\u8868|fig(?:ure)?|table)\.?\s*"
+        r"^\s*(?P<kind>\u56fe|\u8868|fig(?:ure)?|table|scheme)\.?\s*"
         r"(?P<number>\d+(?:\s*[-\u2013\u2014]\s*\d+)*)"
         r"(?P<separator>[.:\uff1a])?(?:\s+(?P<body>.*))?$",
         re.I,
@@ -99,10 +99,24 @@ class DocumentFlowParser:
         }
         embeds = paragraph.xpath(".//a:blip/@r:embed", namespaces=self.NS)
         if embeds:
+            media_paths = [relationships.get(embed, "") for embed in embeds]
+            if len(embeds) > 1 and len(text.strip()) > 120:
+                return [{
+                    **base,
+                    "type": "paragraph",
+                    "contains_inline_math": True,
+                    "inline_media_paths": list(dict.fromkeys(media_paths)),
+                }]
+            node_type = (
+                "formula_image"
+                if self._looks_like_formula_image(text, style)
+                else "image"
+            )
             return [
                 {
                     **base,
-                    "type": "image",
+                    "type": node_type,
+                    "formula_type": "image_formula" if node_type == "formula_image" else "",
                     "relationship_id": embed,
                     "media_path": relationships.get(embed, ""),
                 }
@@ -114,13 +128,13 @@ class DocumentFlowParser:
                 paragraph.xpath(".//m:oMathPara", namespaces=self.NS)
             )
             alignment = base["alignment"].casefold()
-            has_equation_number = bool(re.search(r"\(\s*\d+\s*\)\s*$", text))
+            has_equation_number = bool(re.search(r"\(\s*\d+\s*\)", text))
             non_math_text = "".join(paragraph.xpath(
                 ".//w:t[not(ancestor::m:oMath)]/text()", namespaces=self.NS
             )).strip()
             is_display = has_math_paragraph or not non_math_text or (
                 alignment in {"right", "center"} and has_equation_number
-            )
+            ) or (has_equation_number and self._looks_like_plain_formula(text))
             if not is_display:
                 return [{**base, "type": "paragraph", "contains_inline_math": True}]
             math_node = math_nodes[0]
@@ -182,7 +196,7 @@ class DocumentFlowParser:
         if not match:
             return False
         kind = match.group("kind").casefold()
-        is_figure = kind in {"\u56fe", "fig", "figure"}
+        is_figure = kind in {"\u56fe", "fig", "figure", "scheme"}
         if (expected_kind == "figure") != is_figure:
             return False
         if "caption" in style_lower or kind in {"\u56fe", "\u8868"}:
@@ -197,6 +211,18 @@ class DocumentFlowParser:
 
     @classmethod
     def _looks_like_plain_formula(cls, text: str) -> bool:
+        if len(text) > 500:
+            return False
+        equation_label = re.search(r"\(\s*\d+\s*\)(?:\s|$)", text)
+        if equation_label and len(text) <= 240:
+            if cls.FORMULA_RE.search(text):
+                return True
+            if re.search(
+                r"\b(?:equation|coefficient|constant|formula|ratio)\b",
+                text,
+                re.I,
+            ):
+                return True
         if len(text) > 100 or not cls.FORMULA_RE.search(text):
             return False
         if re.search(r"[=≈≤≥∑∫√＋−×÷^]", text):
@@ -204,6 +230,36 @@ class DocumentFlowParser:
         if re.search(r"\\?(?:frac|sqrt)\s*[({]", text, re.I):
             return True
         return bool(re.search(r"\b(?:lim|log|sin|cos)\s*[_({]", text, re.I))
+
+    @staticmethod
+    def _looks_like_formula_image(text: str, style: str = "") -> bool:
+        normalized = re.sub(r"\s+", " ", text).strip()
+        if re.fullmatch(r"\(\s*\d+\s*\)", normalized):
+            return True
+        equation_number = re.search(r"\(\s*\d+\s*\)", normalized)
+        formula_context = re.search(
+            r"\b(?:coefficient|constant|equilibrium|equation|expression|"
+            r"extraction|formula|percentage|ratio)\b",
+            normalized,
+            re.I,
+        )
+        if len(normalized) <= 260 and equation_number and formula_context:
+            return True
+        if "equation" in style.casefold() and len(normalized) <= 260:
+            return True
+        return bool(
+            len(normalized) <= 180
+            and re.search(
+                r"\b(?:percentage|coefficient|constant|equation|formula)\b",
+                normalized,
+                re.I,
+            )
+            and re.search(
+                r"(?:calculated|defined|expressed|represented|given)\s+by\s*:?$",
+                normalized,
+                re.I,
+            )
+        )
 
     @staticmethod
     def _looks_like_unnumbered_heading(text: str, base_bold: bool) -> bool:

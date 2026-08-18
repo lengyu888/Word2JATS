@@ -44,7 +44,7 @@ class FlowViewBuilder:
         for node in nodes:
             raw_type = node.get("type", "unknown")
             text = str(node.get("text", "") or "").strip()
-            node_type = raw_type
+            node_type = "formula" if raw_type == "formula_image" else raw_type
             target_id = None
 
             if text == article.get("title") or raw_type == "title":
