@@ -146,6 +146,11 @@ async def _convert_upload(file: UploadFile, profile_name: str = "default") -> di
         for figure in article.get("figures", [])
         if figure.get("path")
     ]
+    media_paths.extend(
+        media.get("path", "")
+        for media in article.get("auxiliary_media", [])
+        if media.get("path")
+    )
     return {
         "success": True,
         "conversion_id": work_dir.name,

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import pytest
 import zipfile
+from docx import Document
+from docx.shared import Inches, Pt
 
 from app.main import app
 from tests.test_services import build_figure_docx, build_sample_docx, make_png
@@ -143,6 +145,43 @@ def test_convert_figures_include_secure_media_url(tmp_path):
     assert media.status_code == 200
     assert media.headers["content-type"] == "image/png"
     assert media.content.startswith(b"\x89PNG")
+
+
+def test_convert_preserves_prebody_auxiliary_media_for_package_export(tmp_path):
+    image_path = tmp_path / "graphical-abstract.png"
+    image_path.write_bytes(make_png((30, 100, 170)))
+    docx_path = tmp_path / "front-media.docx"
+    document = Document()
+    title = document.add_paragraph("Auxiliary Front Matter Media")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Alice Smith1")
+    document.add_paragraph("1 Department of Medicine, Example University")
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: media; JATS; publishing")
+    document.add_picture(str(image_path), width=Inches(1))
+    document.add_paragraph("1. Introduction")
+    document.add_paragraph("Body text.")
+    document.save(docx_path)
+
+    response = client.post(
+        "/api/convert",
+        files={
+            "file": (
+                docx_path.name,
+                docx_path.read_bytes(),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["article"]["figures"] == []
+    auxiliary = payload["article"]["auxiliary_media"]
+    assert len(auxiliary) == 1
+    assert auxiliary[0]["role"] == "front-matter"
+    assert payload["media_paths"] == [auxiliary[0]["path"]]
 
 
 def test_media_endpoint_rejects_invalid_or_missing_paths():

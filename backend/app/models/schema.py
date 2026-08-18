@@ -35,6 +35,13 @@ class Figure(BaseModel):
     issues: list["FlowViewIssue"] = Field(default_factory=list)
 
 
+class AuxiliaryMedia(BaseModel):
+    id: str
+    path: str = ""
+    preview_path: str = ""
+    role: str = "front-matter"
+
+
 class ArticleTable(BaseModel):
     id: str
     caption: str = ""
@@ -175,6 +182,7 @@ class Article(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     sections: list[Section] = Field(default_factory=list)
     figures: list[Figure] = Field(default_factory=list)
+    auxiliary_media: list[AuxiliaryMedia] = Field(default_factory=list)
     tables: list[ArticleTable] = Field(default_factory=list)
     lists: list[ArticleList] = Field(default_factory=list)
     formulas: list[Formula] = Field(default_factory=list)

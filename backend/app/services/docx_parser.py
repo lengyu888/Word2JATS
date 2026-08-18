@@ -18,6 +18,7 @@ class DocxParser:
     CONVENTIONAL_SUBHEADINGS = {
         "limitations", "strengths and limitations",
         "limitations and future directions", "future directions",
+        "main findings", "principal findings", "key findings",
     }
     PUBLISHER_BACK_HEADINGS = {
         "funding", "funding information", "conflict of interest",
@@ -26,6 +27,12 @@ class DocxParser:
         "data availability", "data availability statement", "acknowledgments",
         "acknowledgements", "informed consent statement",
         "institutional review board statement",
+        "abbreviations", "abbreviations and acronyms",
+        "availability of data and materials",
+    }
+    EXACT_PUBLISHER_BACK_HEADINGS = {
+        "abbreviations", "abbreviations and acronyms",
+        "availability of data and materials",
     }
     MULTI_PANEL_RE = re.compile(
         r"(?:\([A-Za-z]\s*[-\u2013]\s*[A-Za-z]\)|\bpanels?\b|\bplots?\b)", re.I
@@ -53,6 +60,7 @@ class DocxParser:
         "大学", "学院", "研究院", "实验室", "中心", "医院", "系", "部",
         "school", "university", "institute", "laboratory", "center",
         "department", "faculty", "hospital", "college", "academy",
+        "independent researcher",
     )
     ABSTRACT_RE = re.compile(r"^\s*(摘要|摘\s*要|abstract)\s*[:：]?\s*", re.I)
     KEYWORD_RE = re.compile(r"^\s*(关键词|关\s*键\s*词|key\s*words?|keywords)\s*[:：]?\s*", re.I)
@@ -64,6 +72,9 @@ class DocxParser:
         "original research", "research article", "original article", "review",
         "review article", "case report", "short communication", "editorial",
         "letter", "protocol", "article",
+    }
+    AUTHOR_HEADING_LABELS = {
+        "author", "authors", "author information", "author details",
     }
     ABSTRACT_TRAILING_METADATA_RE = re.compile(
         r"(?:\s|^)\(?\s*(?:received|revised|accepted|published|copyright)\b.*$",
@@ -176,13 +187,26 @@ class DocxParser:
                 if last_caption_target and last_caption_target[0] != "figure":
                     last_caption_target = None
                 active_embedded_table_index = None
+                if current_section is None:
+                    media_index = len(article["figures"]) + len(
+                        article["auxiliary_media"]
+                    ) + 1
+                    media = self._save_flow_image(
+                        node.get("media_path", ""), media_index
+                    )
+                    article["auxiliary_media"].append({
+                        "id": f"media{len(article['auxiliary_media']) + 1}",
+                        **media,
+                        "role": "front-matter",
+                    })
+                    continue
                 pending_index = self._pop_in_section(
                     pending_figures, article["figures"], current_section_index
                 )
                 figure_number = (
-                    pending_index + 1
+                    len(article["auxiliary_media"]) + pending_index + 1
                     if pending_index is not None
-                    else len(article["figures"]) + 1
+                    else len(article["auxiliary_media"]) + len(article["figures"]) + 1
                 )
                 media = self._save_flow_image(
                     node.get("media_path", ""), figure_number
@@ -830,7 +854,8 @@ class DocxParser:
     def _empty_article() -> dict[str, Any]:
         return {
             "title": "", "authors": [], "affiliations": [], "abstract": "",
-            "keywords": [], "sections": [], "figures": [], "tables": [], "lists": [],
+            "keywords": [], "sections": [], "figures": [], "auxiliary_media": [],
+            "tables": [], "lists": [],
             "formulas": [], "references": [],
             "document_flow_view": [],
         }
@@ -892,8 +917,8 @@ class DocxParser:
             lower = text.lower()
             if any(marker in lower for marker in ("correspond", "orcid", "academic editor")):
                 collecting_affiliations = False
-            if collecting_affiliations and any(
-                word in lower for word in self.AFFILIATION_WORDS
+            if collecting_affiliations and self._looks_like_affiliation_paragraph(
+                paragraphs[index]
             ):
                 article["affiliations"].append(text)
                 affiliation_indexes.add(index)
@@ -922,6 +947,7 @@ class DocxParser:
         if (
             not text
             or len(text) > 300
+            or self._normalized_heading(text) in self.AUTHOR_HEADING_LABELS
             or "@" in text
             or any(word in lower for word in self.AFFILIATION_WORDS)
             or any(marker in lower for marker in (
@@ -930,18 +956,47 @@ class DocxParser:
             ))
         ):
             return []
-        cleaned = re.sub(r"\b(?:m\.?d\.?|ph\.?d\.?)\b", "", text, flags=re.I)
+        cleaned = re.sub(
+            r"\b(?:m\.?\s?d\.?|ph\.?\s?d\.?|m\.?\s?sc\.?|"
+            r"b\.?\s?sc\.?|m\.?\s?b\.?)\s*(?=\d|\W|$)",
+            "",
+            text,
+            flags=re.I,
+        )
         cleaned = re.sub(r"\s+and\s+", ",", cleaned, flags=re.I)
-        candidates = re.split(r"[,，;；]", cleaned)
+        candidates = re.split(
+            r"[,，;；]|\.\s+(?=[A-Z\u00c0-\u024f])|"
+            r"\s{2,}(?=[A-Z\u00c0-\u024f])",
+            cleaned,
+        )
         names = []
         for candidate in candidates:
-            value = re.sub(r"[\d¹²³⁴⁵⁶⁷⁸⁹⁰†‡#*]+(?:\s*)$", "", candidate).strip(" .:()")
+            value = candidate.strip(" .:()")
+            value = re.sub(
+                r"[\d¹²³⁴⁵⁶⁷⁸⁹⁰†‡#*]+(?:\s*)$", "", value
+            ).strip(" .:()")
             value = re.sub(r"^[\d¹²³⁴⁵⁶⁷⁸⁹⁰†‡#*]+", "", value).strip()
             words = [word for word in value.split() if any(char.isalpha() for char in word)]
             is_chinese_name = bool(re.fullmatch(r"[\u3400-\u9fff]{2,4}", value))
             if is_chinese_name or (2 <= len(words) <= 6 and len(value) <= 80):
                 names.append(value)
         return list(dict.fromkeys(names))
+
+    def _looks_like_affiliation_paragraph(
+        self, paragraph: dict[str, Any]
+    ) -> bool:
+        text = str(paragraph.get("text", "")).strip()
+        lower = text.casefold()
+        style = str(paragraph.get("style", "")).casefold()
+        if "affiliation" in style:
+            return True
+        if any(word in lower for word in self.AFFILIATION_WORDS):
+            return True
+        return bool(
+            re.match(r"^\s*(?:\d+|[a-z])(?=[A-Z\u00c0-\u024f])", text)
+            and text.count(",") >= 2
+            and len(text) >= 20
+        )
 
     @staticmethod
     def _profile_caption_evidence(
@@ -965,6 +1020,11 @@ class DocxParser:
     @classmethod
     def _is_publisher_back_heading(cls, text: str) -> bool:
         normalized = cls._normalized_heading(text)
+        if any(
+            normalized.startswith(f"{heading}:")
+            for heading in cls.EXACT_PUBLISHER_BACK_HEADINGS
+        ):
+            return False
         prefix = normalized.split(":", 1)[0].strip()
         return normalized in cls.PUBLISHER_BACK_HEADINGS or prefix in cls.PUBLISHER_BACK_HEADINGS
 
@@ -1025,6 +1085,8 @@ class DocxParser:
                 continue
             if not any(char.isalpha() for char in title):
                 continue
+            if len(title) > 220 or len(title.split()) > 30:
+                continue
             compact_title = re.sub(r"\s+", "", title)
             digit_ratio = sum(char.isdigit() for char in title) / max(
                 1, len(compact_title)
@@ -1042,6 +1104,8 @@ class DocxParser:
             }
         if re.match(r"^\d+(?:\.\d+)*\s+", text):
             return None
+        if self._normalized_heading(text) in self.CONVENTIONAL_SUBHEADINGS:
+            return {"title": text.strip(), "level": 2, "paragraphs": []}
         style = str(node.get("style", "")).strip()
         if style.isdigit() and 1 <= int(style) <= 6 and any(char.isalpha() for char in text):
             return {
@@ -1052,8 +1116,6 @@ class DocxParser:
             }
         if node.get("type") == "heading" and text and any(char.isalpha() for char in text):
             return {"title": text.strip(), "level": 1, "paragraphs": []}
-        if self._normalized_heading(text) in self.CONVENTIONAL_SUBHEADINGS:
-            return {"title": text.strip(), "level": 2, "paragraphs": []}
         return None
 
     @staticmethod

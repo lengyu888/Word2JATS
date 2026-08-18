@@ -77,6 +77,108 @@ def test_long_first_heading_beats_short_author_line_as_title(tmp_path):
 
     assert article["title"].startswith("Organizing Knowledge")
     assert [author["name"] for author in article["authors"]] == ["Harendra Alwis"]
+    assert article["affiliations"] == [
+        "1 Independent Researcher, Melbourne, Australia"
+    ]
+
+
+def test_plain_numeric_affiliation_markers_separate_adjacent_authors(tmp_path):
+    path = tmp_path / "plain-author-markers.docx"
+    document = Document()
+    title = document.add_paragraph("Reliable Contributor Recovery")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph(
+        "Chuanying Wang1,2  Yunyi Hao1,2,3  Yujie Zhou5  "
+        "Kaijiang Kang1,2*  Moisés Rubio-Osornio6*."
+    )
+    document.add_paragraph("1 Department of Medicine, Example University")
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: authors; JATS; publishing")
+    document.add_paragraph("1. Introduction")
+    document.add_paragraph("Body text.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert [author["name"] for author in article["authors"]] == [
+        "Chuanying Wang",
+        "Yunyi Hao",
+        "Yujie Zhou",
+        "Kaijiang Kang",
+        "Moisés Rubio-Osornio",
+    ]
+
+
+def test_author_information_label_and_degree_markers_are_not_contributors(tmp_path):
+    path = tmp_path / "degree-author-markers.docx"
+    document = Document()
+    title = document.add_paragraph("Degree Marker Contributor Recovery")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Author information:")
+    document.add_paragraph(
+        "Han Zhang, M.Sc1,2,3 †. Chanlin Han, M.Sc1,2,3 †. "
+        "Rui Hu, M.B1,2,3*."
+    )
+    affiliation_style = document.styles.add_style("Affiliation", 1)
+    first_affiliation = document.add_paragraph(
+        "1Pathology Unit, Example Medical Center, London, United Kingdom"
+    )
+    first_affiliation.style = affiliation_style
+    document.add_paragraph(
+        "2Academician Workstation of Biomedical Materials, Nanchang, China"
+    )
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: authors; JATS; publishing")
+    document.add_paragraph("1. Introduction")
+    document.add_paragraph("Body text.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert [author["name"] for author in article["authors"]] == [
+        "Han Zhang", "Chanlin Han", "Rui Hu"
+    ]
+    assert article["affiliations"] == [
+        "1Pathology Unit, Example Medical Center, London, United Kingdom",
+        "2Academician Workstation of Biomedical Materials, Nanchang, China",
+    ]
+
+
+def test_prebody_media_is_preserved_without_becoming_body_figure(tmp_path):
+    path = tmp_path / "front-media.docx"
+    image_path = tmp_path / "image.png"
+    image_path.write_bytes(make_png((10, 90, 160)))
+    document = Document()
+    title = document.add_paragraph("Front Matter Media Classification")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Alice Smith1")
+    document.add_paragraph("1 Department of Medicine, Example University")
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: figures; JATS; publishing")
+    document.add_picture(str(image_path), width=Inches(1))
+    document.add_paragraph("1. Introduction")
+    document.add_paragraph("Body text refers to Fig. 1.")
+    document.add_picture(str(image_path), width=Inches(1))
+    document.add_paragraph("Fig. 1. Body figure")
+    abbreviations = document.add_paragraph("Abbreviations")
+    abbreviations.runs[0].bold = True
+    document.add_paragraph("JATS, Journal Article Tag Suite")
+    availability = document.add_paragraph("Availability of Data and Materials")
+    availability.runs[0].bold = True
+    document.add_paragraph("Data are available on request.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert len(article["auxiliary_media"]) == 1
+    assert article["auxiliary_media"][0]["role"] == "front-matter"
+    assert len(article["figures"]) == 1
+    assert article["figures"][0]["caption"] == "Fig. 1. Body figure"
+    assert article["auxiliary_media"][0]["path"] != article["figures"][0]["path"]
+    assert [section["title"] for section in article["sections"]] == ["Introduction"]
 
 
 def test_reference_narrative_is_not_float_caption(tmp_path):
@@ -182,6 +284,37 @@ def test_number_prefixed_table_text_is_not_a_section(tmp_path):
     article = DocxParser(path, tmp_path / "media").parse()
 
     assert [section["title"] for section in article["sections"]] == ["Results"]
+
+
+def test_long_numbered_prose_is_not_section_and_main_findings_is_nested(tmp_path):
+    path = tmp_path / "numbered-prose-and-findings.docx"
+    document = Document()
+    title = document.add_paragraph("Evidence Heading Boundaries")
+    title.runs[0].bold = True
+    title.runs[0].font.size = Pt(18)
+    document.add_paragraph("Abstract: Summary")
+    document.add_paragraph("Keywords: sections; JATS; publishing")
+    document.add_paragraph("3. Results")
+    long_prose = document.add_paragraph(
+        "47 questions based on the clinical guideline were evaluated independently "
+        "by two reviewers, and every response was assessed for accuracy, "
+        "comprehensiveness, readability, relevance, consistency, safety, and "
+        "practical usefulness across multiple clinical scenarios and populations."
+    )
+    long_prose.runs[0].bold = True
+    document.add_paragraph("4. Discussion")
+    findings = document.add_paragraph("Main Findings")
+    findings.runs[0].bold = True
+    document.add_paragraph("Interpretation text.")
+    document.save(path)
+
+    article = DocxParser(path, tmp_path / "media").parse()
+
+    assert [section["title"] for section in article["sections"]] == [
+        "Results", "Discussion", "Main Findings"
+    ]
+    assert [section["level"] for section in article["sections"]] == [1, 1, 2]
+    assert long_prose.text in article["sections"][0]["paragraphs"]
 
 
 def test_bullet_subheading_inherits_one_level_below_current_heading(tmp_path):
