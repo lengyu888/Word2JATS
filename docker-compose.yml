@@ -4,10 +4,28 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2.0
+    tmpfs:
+      - /tmp:rw,nosuid,size=256m
+    environment:
+      WORD2JATS_MAX_UPLOAD_MB: "50"
+      WORD2JATS_MAX_REQUEST_MB: "220"
+      WORD2JATS_MAX_BATCH_FILES: "20"
+      WORD2JATS_MAX_CONCURRENT_CONVERSIONS: "2"
+      WORD2JATS_TEMP_RETENTION_HOURS: "24"
+      WORD2JATS_MAX_TEMP_JOBS: "200"
+      WORD2JATS_MAX_TEMP_GB: "2"
     ports:
       - "8000:8000"
     volumes:
-      - word2jats-temp:/app/temp
+      - word2jats-secure-temp:/app/temp
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
       interval: 10s
@@ -17,6 +35,8 @@ services:
   frontend:
     build: ./frontend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       backend:
         condition: service_healthy
@@ -24,4 +44,4 @@ services:
       - "8080:80"
 
 volumes:
-  word2jats-temp:
+  word2jats-secure-temp:

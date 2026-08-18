@@ -21,6 +21,7 @@ Word2JATS 是面向学术出版的 Word 智能结构化转换原型。系统支�
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
 | 转换耗时、节点数量与校验轮次审计统计 | 已支持 |
+| 流式限额、ZIP 防炸弹、安全 XML 与临时文件回收 | 已支持 |
 
 ## 官方基线与 JATS 1.3 对齐
 
@@ -59,8 +60,20 @@ python evaluate_official_samples.py
 docker compose up --build
 ```
 
-Docker 前端 Nginx 已设置 `client_max_body_size 100m`，可支持 5 篇官方样例一次性批量上传。
+Docker 前端 Nginx 与后端请求中间件统一设置 220 MB 请求上限；单文件默认不超过 50 MB，单批默认不超过 20 个文件，可支持 5 篇官方样例一次性批量上传。
 后端镜像内置 LibreOffice Writer 与中英文字体，Docker 环境可直接上传 `.doc`。本机开发模式如需处理 `.doc`，需安装 LibreOffice 并确保 `soffice` 可执行，或通过 `WORD2JATS_SOFFICE` 指向 `soffice.exe`；仅处理 `.docx` 时不需要 LibreOffice。
+
+## 安全与稳定性边界
+
+- 上传采用 1 MB 分块写入，超过单文件限制时立即停止并删除半成品，不把完整 Word 文件一次性读入内存。
+- `.doc` 校验 OLE/RTF 文件签名；`.docx` 在解析前检查 OOXML 必需文件、ZIP 路径、加密条目、条目数量、单项大小、解压总量和异常压缩比。
+- DOCX XML、关系 XML、OMML 和人工提交的 MathML 均禁用外部实体、DTD 加载和网络访问。
+- LibreOffice 使用任务独立 Profile、120 秒超时和非交互参数；转换失败会删除整个任务目录，成功后仅保留预览与 ZIP 所需媒体。
+- 转换媒体默认保留 24 小时，并受 200 个任务、2 GB 总量上限约束；清理器只处理符合 UUID 格式的受控任务目录。
+- Docker 后端以非 root 用户和只读根文件系统运行，启用 `no-new-privileges`，并限制 CPU、内存和进程数。
+- 安全版 Compose 使用独立的 `word2jats-secure-temp` 临时卷，避免继承旧版 root 容器创建的卷权限；旧临时卷不会被自动删除。
+
+主要限制可通过 `WORD2JATS_MAX_UPLOAD_MB`、`WORD2JATS_MAX_REQUEST_MB`、`WORD2JATS_MAX_BATCH_FILES`、`WORD2JATS_MAX_CONCURRENT_CONVERSIONS`、`WORD2JATS_TEMP_RETENTION_HOURS`、`WORD2JATS_MAX_TEMP_JOBS` 和 `WORD2JATS_MAX_TEMP_GB` 环境变量调整。
 
 访问：
 
@@ -155,7 +168,7 @@ npm run build
 - 复杂合并单元格、跨页表格、嵌套列表和非标准参考文献仍需人工复核。
 - `auxiliary_media` 保留正文前图片但不猜测其出版语义；图形摘要、作者照片等最终位置仍需按期刊要求确认。
 - 正式 DTD 校验不会自动编造 ISSN、DOI、ORCID 等真实出版元数据。
-- 当前批量转换为请求内顺序处理，生产环境仍可扩展任务队列、鉴权和结果过期清理。
+- 当前批量转换为请求内顺序处理，生产环境仍可扩展持久化任务队列、鉴权和跨实例配额控制。
 - 质量分是可解释的规则评分，不等同于出版社最终验收结论。
 - `processing_stats` 是本次请求的运行审计摘要，不代表生产环境的长期性能基准。
 

@@ -1,5 +1,7 @@
+import asyncio
 import mimetypes
 import re
+import shutil
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -18,6 +20,7 @@ from app.models.schema import (
     ProcessingStats,
 )
 from app.services.docx_parser import DocxParser
+from app.services.document_security import DocumentSecurityPolicy
 from app.services.flow_view_builder import FlowViewBuilder
 from app.services.jats_generator import JatsGenerator
 from app.services.jats_auto_fixer import JatsAutoFixer
@@ -26,9 +29,10 @@ from app.services.official_xml_comparator import OfficialXmlComparator
 from app.services.package_exporter import PackageExporter
 from app.services.profile_loader import ProfileLoader
 from app.services.quality_scorer import QualityScorer
+from app.services.temp_storage import TempStorageManager
 from app.services.validator import ArticleValidator
 from app.services.visual_preview_builder import VisualPreviewBuilder
-from app.utils.file_utils import safe_filename, save_upload
+from app.utils.file_utils import safe_filename, save_upload_limited
 
 
 router = APIRouter(prefix="/api", tags=["conversion"])
@@ -39,6 +43,11 @@ quality_scorer = QualityScorer()
 flow_view_builder = FlowViewBuilder()
 visual_preview_builder = VisualPreviewBuilder()
 legacy_doc_converter = LegacyDocConverter()
+security_policy = DocumentSecurityPolicy.from_env()
+temp_storage = TempStorageManager(TEMP_ROOT)
+conversion_semaphore = asyncio.Semaphore(
+    security_policy.max_concurrent_conversions
+)
 SAMPLE_ROOT = Path(__file__).resolve().parents[3] / "sample_documents"
 OFFICIAL_SAMPLE_ROOT = Path(__file__).resolve().parents[3] / "样例-最新版"
 DEMO_DOCUMENT_NAMES = (
@@ -126,13 +135,21 @@ def _processing_stats(
 
 
 async def _convert_upload(file: UploadFile, profile_name: str = "default") -> dict:
+    async with conversion_semaphore:
+        return await _convert_upload_guarded(file, profile_name)
+
+
+async def _convert_upload_guarded(
+    file: UploadFile, profile_name: str = "default"
+) -> dict:
     started_at = time.perf_counter()
     source_suffix = Path(file.filename or "").suffix.lower()
     if not file.filename or source_suffix not in {".doc", ".docx"}:
         raise ValueError("仅支持 .doc 或 .docx 文件。")
+    temp_storage.cleanup()
     work_dir = TEMP_ROOT / uuid4().hex
-    source = await save_upload(file, work_dir / safe_filename(file.filename))
-    parse_source = source
+    source: Path | None = None
+    parse_source: Path | None = None
     preprocessing = {
         "source_format": source_suffix.lstrip("."),
         "converted": False,
@@ -140,59 +157,76 @@ async def _convert_upload(file: UploadFile, profile_name: str = "default") -> di
         "intermediate_format": "",
     }
     try:
-        if source_suffix == ".doc":
-            parse_source = legacy_doc_converter.convert(source, work_dir / "converted")
-            preprocessing.update({
-                "converted": True,
-                "converter": "LibreOffice Headless",
-                "intermediate_format": "docx",
-            })
-        profile = profile_loader.load(profile_name)
-        parser = DocxParser(parse_source, work_dir / "media", profile)
-        article = parser.parse()
-    finally:
-        source.unlink(missing_ok=True)
-        if parse_source != source:
-            parse_source.unlink(missing_ok=True)
-    xml, validation, quality_report = _generate_outputs(article, profile)
-    official_comparison = _compare_with_official_sample(file.filename, xml)
-    visual_preview_builder.enrich(article, work_dir.name, quality_report)
-    article["document_flow_view"] = flow_view_builder.build(
-        article, parser.document_flow_nodes, validation, quality_report
-    )
-    media_paths = [
-        figure.get("path", "")
-        for figure in article.get("figures", [])
-        if figure.get("path")
-    ]
-    media_paths.extend(
-        media.get("path", "")
-        for media in article.get("auxiliary_media", [])
-        if media.get("path")
-    )
-    media_paths.extend(
-        formula.get("path", "")
-        for formula in article.get("formulas", [])
-        if formula.get("path")
-    )
-    return {
-        "success": True,
-        "conversion_id": work_dir.name,
-        "article": article,
-        "xml": xml,
-        "validation": validation,
-        "quality_report": quality_report,
-        "processing_stats": _processing_stats(
-            article,
-            validation,
-            time.perf_counter() - started_at,
-            source_node_count=len(parser.document_flow_nodes),
-        ),
-        "media_paths": media_paths,
-        "official_comparison": official_comparison,
-        "source_format": preprocessing["source_format"],
-        "preprocessing": preprocessing,
-    }
+        try:
+            source = await save_upload_limited(
+                file,
+                work_dir / safe_filename(file.filename),
+                security_policy.max_upload_bytes,
+            )
+            security_policy.inspect(source, source_suffix)
+            parse_source = source
+            if source_suffix == ".doc":
+                parse_source = legacy_doc_converter.convert(
+                    source, work_dir / "converted"
+                )
+                security_policy.inspect(parse_source, ".docx")
+                preprocessing.update({
+                    "converted": True,
+                    "converter": "LibreOffice Headless",
+                    "intermediate_format": "docx",
+                })
+            profile = profile_loader.load(profile_name)
+            parser = DocxParser(parse_source, work_dir / "media", profile)
+            article = parser.parse()
+        finally:
+            if source:
+                source.unlink(missing_ok=True)
+            if parse_source and parse_source != source:
+                parse_source.unlink(missing_ok=True)
+            shutil.rmtree(work_dir / "converted", ignore_errors=True)
+
+        xml, validation, quality_report = _generate_outputs(article, profile)
+        official_comparison = _compare_with_official_sample(file.filename, xml)
+        visual_preview_builder.enrich(article, work_dir.name, quality_report)
+        article["document_flow_view"] = flow_view_builder.build(
+            article, parser.document_flow_nodes, validation, quality_report
+        )
+        media_paths = [
+            figure.get("path", "")
+            for figure in article.get("figures", [])
+            if figure.get("path")
+        ]
+        media_paths.extend(
+            media.get("path", "")
+            for media in article.get("auxiliary_media", [])
+            if media.get("path")
+        )
+        media_paths.extend(
+            formula.get("path", "")
+            for formula in article.get("formulas", [])
+            if formula.get("path")
+        )
+        return {
+            "success": True,
+            "conversion_id": work_dir.name,
+            "article": article,
+            "xml": xml,
+            "validation": validation,
+            "quality_report": quality_report,
+            "processing_stats": _processing_stats(
+                article,
+                validation,
+                time.perf_counter() - started_at,
+                source_node_count=len(parser.document_flow_nodes),
+            ),
+            "media_paths": media_paths,
+            "official_comparison": official_comparison,
+            "source_format": preprocessing["source_format"],
+            "preprocessing": preprocessing,
+        }
+    except Exception:
+        temp_storage.remove(work_dir)
+        raise
 
 
 def _compare_with_official_sample(filename: str | None, xml: str) -> dict:
@@ -225,6 +259,11 @@ async def convert_docx(file: UploadFile = File(...), profile: str = Form("defaul
 async def batch_convert_docx(
     files: list[UploadFile] = File(...), profile: str = Form("default")
 ) -> dict:
+    if len(files) > security_policy.max_batch_files:
+        raise HTTPException(
+            status_code=413,
+            detail=f"单次批量转换最多支持 {security_policy.max_batch_files} 个文件。",
+        )
     results = []
     for file in files:
         filename = file.filename or "unnamed.doc"

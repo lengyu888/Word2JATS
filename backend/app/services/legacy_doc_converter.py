@@ -46,6 +46,8 @@ class LegacyDocConverter:
             "--nodefault",
             "--nofirststartwizard",
             "--nolockcheck",
+            "--norestore",
+            "--invisible",
             f"-env:UserInstallation={profile_dir.as_uri()}",
             "--convert-to",
             "docx:Office Open XML Text",
@@ -54,7 +56,17 @@ class LegacyDocConverter:
             str(source_path),
         ]
         environment = os.environ.copy()
-        environment.setdefault("HOME", str(destination))
+        cache_dir = destination / ".cache"
+        process_temp = destination / ".tmp"
+        cache_dir.mkdir(exist_ok=True)
+        process_temp.mkdir(exist_ok=True)
+        environment.update({
+            "HOME": str(destination),
+            "XDG_CACHE_HOME": str(cache_dir),
+            "TMPDIR": str(process_temp),
+            "TMP": str(process_temp),
+            "TEMP": str(process_temp),
+        })
         try:
             completed = subprocess.run(
                 command,

@@ -12,12 +12,15 @@ from tests.test_services import build_figure_docx, build_sample_docx, make_png
 
 
 client = TestClient(app)
+OLE_HEADER = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
 
 def test_health_endpoint():
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
 
 
 def test_demo_document_endpoint():
@@ -147,7 +150,7 @@ def test_convert_endpoint_accepts_legacy_doc_via_preprocessor(
         files={
             "file": (
                 "legacy-paper.doc",
-                b"legacy-binary-word",
+                OLE_HEADER + b"legacy-binary-word",
                 "application/msword",
             )
         },
@@ -244,6 +247,39 @@ def test_convert_endpoint_rejects_non_word_format():
 
     assert response.status_code == 400
     assert "仅支持 .doc 或 .docx 文件" in response.json()["detail"]
+
+
+def test_convert_endpoint_rejects_spoofed_docx_and_cleans_workdir(monkeypatch):
+    import app.routers.convert as convert_module
+
+    conversion_id = "e" * 32
+
+    class FixedUuid:
+        hex = conversion_id
+
+    monkeypatch.setattr(convert_module, "uuid4", lambda: FixedUuid())
+    response = client.post(
+        "/api/convert",
+        files={"file": ("malware.docx", b"MZ executable", "application/octet-stream")},
+    )
+
+    assert response.status_code == 400
+    assert "不是有效的 OOXML ZIP" in response.json()["detail"]
+    assert not (convert_module.TEMP_ROOT / conversion_id).exists()
+
+
+def test_request_body_limit_rejects_declared_oversized_request():
+    response = client.post(
+        "/api/generate-xml",
+        content=b"{}",
+        headers={
+            "content-type": "application/json",
+            "content-length": str(221 * 1024 * 1024),
+        },
+    )
+
+    assert response.status_code == 413
+    assert "请求体超过" in response.json()["detail"]
 
 
 def test_generate_xml_endpoint_uses_corrected_article():
@@ -436,7 +472,7 @@ def test_batch_convert_accepts_legacy_doc_via_preprocessor(monkeypatch):
     response = client.post(
         "/api/batch-convert",
         files=[
-            ("files", ("legacy-one.doc", b"legacy-one", "application/msword")),
+            ("files", ("legacy-one.doc", OLE_HEADER + b"legacy-one", "application/msword")),
             ("files", ("modern.docx", build_sample_docx(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
         ],
     )
@@ -449,6 +485,27 @@ def test_batch_convert_accepts_legacy_doc_via_preprocessor(monkeypatch):
     assert legacy["preprocessing"]["converted"] is True
     assert modern["source_format"] == "docx"
     assert modern["preprocessing"]["converted"] is False
+
+
+def test_batch_convert_rejects_too_many_files(monkeypatch):
+    import app.routers.convert as convert_module
+    from app.services.document_security import DocumentSecurityPolicy
+
+    monkeypatch.setattr(
+        convert_module,
+        "security_policy",
+        DocumentSecurityPolicy(max_batch_files=1),
+    )
+    response = client.post(
+        "/api/batch-convert",
+        files=[
+            ("files", ("one.docx", build_sample_docx(), "application/octet-stream")),
+            ("files", ("two.docx", build_sample_docx(), "application/octet-stream")),
+        ],
+    )
+
+    assert response.status_code == 413
+    assert "最多支持 1 个文件" in response.json()["detail"]
 
 
 def test_export_package_contains_required_files_and_media(tmp_path):

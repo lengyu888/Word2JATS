@@ -26,6 +26,11 @@ def test_legacy_doc_converter_validates_generated_docx(tmp_path, monkeypatch):
 
     def fake_run(command, **kwargs):
         output_dir = Path(command[command.index("--outdir") + 1])
+        assert kwargs["env"]["HOME"] == str(output_dir)
+        assert kwargs["env"]["XDG_CACHE_HOME"] == str(output_dir / ".cache")
+        assert kwargs["env"]["TMPDIR"] == str(output_dir / ".tmp")
+        assert "--norestore" in command
+        assert "--invisible" in command
         (output_dir / "paper.docx").write_bytes(build_sample_docx())
 
         class Result:

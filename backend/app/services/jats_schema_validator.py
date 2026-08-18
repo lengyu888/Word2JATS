@@ -19,7 +19,15 @@ class JatsSchemaValidator:
             "schema_file": "",
         }
         try:
-            root = etree.fromstring(xml.encode("utf-8"), etree.XMLParser(no_network=True))
+            root = etree.fromstring(
+                xml.encode("utf-8"),
+                etree.XMLParser(
+                    no_network=True,
+                    resolve_entities=False,
+                    load_dtd=False,
+                    huge_tree=False,
+                ),
+            )
             result["xml_well_formed"] = True
         except (etree.XMLSyntaxError, ValueError) as exc:
             result["schema_errors"].append(f"XML is not well formed: {exc}")

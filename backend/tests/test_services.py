@@ -141,6 +141,32 @@ def test_generator_produces_parseable_jats():
     assert result["passed"] is True
 
 
+def test_generator_ignores_non_mathml_formula_fragment():
+    article = {
+        "title": "安全公式测试",
+        "authors": [],
+        "affiliations": [],
+        "abstract": "摘要",
+        "keywords": ["JATS", "MathML", "安全"],
+        "sections": [{"title": "方法", "paragraphs": ["正文"]}],
+        "figures": [],
+        "tables": [],
+        "lists": [],
+        "references": [],
+        "formulas": [{
+            "id": "eq1",
+            "content": "x=1",
+            "mathml": "<script xmlns='https://example.invalid'>alert(1)</script>",
+            "section_index": 0,
+        }],
+    }
+
+    xml = JatsGenerator().generate(article)
+
+    assert "<script" not in xml
+    assert "<![CDATA[x=1]]>" in xml
+
+
 def test_parser_recognizes_reference_heading_and_common_labels(tmp_path):
     path = tmp_path / "references.docx"
     document = Document()

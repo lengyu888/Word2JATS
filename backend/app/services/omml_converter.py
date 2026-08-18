@@ -2,6 +2,8 @@ from typing import Any
 
 from lxml import etree
 
+from app.utils.xml_utils import parse_untrusted_xml
+
 
 class OmmlConverter:
     """Convert a maintainable subset of OMML to Presentation MathML and LaTeX."""
@@ -33,7 +35,7 @@ class OmmlConverter:
         self.unsupported_features: set[str] = set()
         self.issues: list[dict[str, str]] = []
         try:
-            root = etree.fromstring(omml.encode("utf-8"))
+            root = parse_untrusted_xml(omml)
             math = etree.Element(
                 f"{{{self.MATHML_NS}}}math", nsmap={"mml": self.MATHML_NS}
             )

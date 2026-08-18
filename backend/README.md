@@ -21,6 +21,7 @@ FastAPI 后端负责 `.doc`/`.docx` 上传、旧版 Word 安全预转换、DOCX 
 | Schema 白名单自动修复与人工校正闭环 | 已支持 |
 | 批量转换与 ZIP 结果包 | 已支持 |
 | 转换耗时、节点数量与校验轮次审计统计 | 已支持 |
+| 流式上传限额、ZIP 防炸弹、安全 XML 与临时目录回收 | 已支持 |
 
 ## 技术栈
 
@@ -54,7 +55,24 @@ python scripts/release_check.py
 - 安全媒体预览：`GET /api/media/{conversion_id}/{filename}`
 - ZIP 导出：`POST /api/export-package`
 
-Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `/api/batch-convert` 一次性提交 5 篇官方样例。
+Docker 运行时前端 Nginx 与 FastAPI 请求中间件统一设置 220 MB 请求上限；单文件默认 50 MB、单批默认 20 个文件，可通过 `/api/batch-convert` 一次性提交 5 篇官方样例。
+
+## 安全配置
+
+| 环境变量 | 默认值 | 作用 |
+| --- | ---: | --- |
+| `WORD2JATS_MAX_UPLOAD_MB` | 50 | 单个 `.doc/.docx` 最大体积 |
+| `WORD2JATS_MAX_REQUEST_MB` | 220 | 整个 HTTP 请求体上限 |
+| `WORD2JATS_MAX_BATCH_FILES` | 20 | 单批文件数上限 |
+| `WORD2JATS_MAX_UNCOMPRESSED_MB` | 250 | DOCX ZIP 解压总量上限 |
+| `WORD2JATS_MAX_ZIP_ENTRY_MB` | 64 | DOCX 单个 ZIP 条目上限 |
+| `WORD2JATS_MAX_COMPRESSION_RATIO` | 200 | ZIP 单项最大允许压缩比 |
+| `WORD2JATS_MAX_CONCURRENT_CONVERSIONS` | 2 | 单进程转换并发上限 |
+| `WORD2JATS_TEMP_RETENTION_HOURS` | 24 | 媒体任务保留时间 |
+| `WORD2JATS_MAX_TEMP_JOBS` | 200 | 临时任务目录数量上限 |
+| `WORD2JATS_MAX_TEMP_GB` | 2 | 临时任务总容量上限 |
+
+上传文件采用分块落盘，并在业务解析前验证文件签名和 OOXML ZIP 结构。安全检查拒绝危险 ZIP 路径、加密条目、异常压缩比、过多条目和超限解压内容；XML 解析器禁用外部实体、外部 DTD 和网络访问。失败任务会整体清理，成功任务删除上传原件、LibreOffice Profile 和中间 DOCX。Docker 后端使用 UID 10001 非 root 用户、只读根文件系统、`no-new-privileges`、能力清空以及 CPU/内存/PID 限制。Compose 使用独立的 `word2jats-secure-temp` 卷，避免继承旧版 root 容器创建的临时卷权限。
 
 ## 处理流程
 
@@ -68,7 +86,7 @@ Docker 运行时前端 Nginx 已设置 `client_max_body_size 100m`，可通过 `
 8. `ArticleValidator`、`QualityScorer` 汇总业务规则、引用完整性、质量分和修复建议。
 9. `FlowViewBuilder`、`VisualPreviewBuilder` 为前端生成文档流映射和图表预览数据。
    TIFF 图片会在受控媒体目录中额外生成 PNG 预览副本；JATS 与 ZIP 保持指向原始 TIFF。
-9. 路由层附加返回 `processing_stats`，记录耗时、源节点数、结构对象数、校验错误数和 Schema 自动修复轮次，便于回归审计。
+10. 路由层附加返回 `processing_stats`，记录耗时、源节点数、结构对象数、校验错误数和 Schema 自动修复轮次，便于回归审计。
 
 ## 官方样例演示与对比
 
@@ -149,6 +167,6 @@ media/
 - 复杂合并单元格、跨页表格、嵌套列表和非标准参考文献仍需人工复核。
 - `auxiliary_media` 不自动判断图形摘要、作者照片等具体出版语义，最终放置方式仍需按期刊 Profile 或人工校正确认。
 - 正式 DTD 校验不会自动编造 ISSN、DOI、ORCID 等真实出版元数据。
-- 当前批量转换为请求内顺序处理，生产环境仍可扩展任务队列、鉴权和结果过期清理。
+- 当前批量转换为请求内顺序处理，生产环境仍可扩展持久化任务队列、鉴权和跨实例配额控制。
 - 质量分是可解释的规则评分，不等同于出版社最终验收结论。
 - 当前统计是单次请求级审计信息，尚未替代生产环境的集中式指标系统。

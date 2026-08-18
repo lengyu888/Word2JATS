@@ -12,9 +12,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY backend/ .
-COPY sample_documents/ /sample_documents/
-COPY 样例-最新版/ /样例-最新版/
+RUN groupadd --gid 10001 word2jats \
+    && useradd --uid 10001 --gid word2jats --home-dir /app --shell /usr/sbin/nologin word2jats \
+    && mkdir -p /app/temp \
+    && chown -R word2jats:word2jats /app
+COPY --chown=word2jats:word2jats backend/ .
+COPY --chown=word2jats:word2jats sample_documents/ /sample_documents/
+COPY --chown=word2jats:word2jats 样例-最新版/ /样例-最新版/
 
 EXPOSE 8000
+USER word2jats
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

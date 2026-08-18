@@ -3,6 +3,8 @@ from typing import Any
 
 from lxml import etree
 
+from app.utils.xml_utils import parse_untrusted_xml
+
 from app.services.xref_resolver import XrefResolver
 from app.services.caption_normalizer import CaptionNormalizer
 from app.services.profile_loader import ProfileLoader
@@ -183,7 +185,13 @@ class JatsGenerator:
             alternatives = etree.SubElement(disp, "alternatives")
             if formula.get("mathml"):
                 try:
-                    alternatives.append(etree.fromstring(formula["mathml"].encode("utf-8")))
+                    mathml = parse_untrusted_xml(formula["mathml"])
+                    qname = etree.QName(mathml)
+                    if (
+                        qname.localname == "math"
+                        and qname.namespace == self.MML_NS
+                    ):
+                        alternatives.append(mathml)
                 except (etree.XMLSyntaxError, ValueError):
                     pass
             content = (

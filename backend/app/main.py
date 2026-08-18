@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.middleware.security import RequestBodyLimitMiddleware, SecurityHeadersMiddleware
 from app.routers.convert import router as convert_router
+from app.services.document_security import DocumentSecurityPolicy
 
 
 app = FastAPI(
@@ -16,6 +18,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+security_policy = DocumentSecurityPolicy.from_env()
+app.add_middleware(
+    RequestBodyLimitMiddleware, max_body_bytes=security_policy.max_request_bytes
+)
+app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(convert_router)
 
 

@@ -7,6 +7,8 @@ from typing import Any
 from lxml import etree
 
 from app.services.omml_converter import OmmlConverter
+from app.services.document_security import DocumentSecurityPolicy
+from app.utils.xml_utils import parse_untrusted_xml
 
 
 class DocumentFlowParser:
@@ -53,10 +55,12 @@ class DocumentFlowParser:
     def __init__(self, docx_path: str | Path):
         self.docx_path = Path(docx_path)
         self.omml_converter = OmmlConverter()
+        self.security_policy = DocumentSecurityPolicy.from_env()
 
     def parse(self) -> list[dict[str, Any]]:
+        self.security_policy.inspect(self.docx_path, ".docx")
         with zipfile.ZipFile(self.docx_path) as archive:
-            document = etree.fromstring(archive.read("word/document.xml"))
+            document = parse_untrusted_xml(archive.read("word/document.xml"))
             relationships = self._read_relationships(archive)
 
         body = document.find("w:body", self.NS)
@@ -284,7 +288,7 @@ class DocumentFlowParser:
         path = "word/_rels/document.xml.rels"
         if path not in archive.namelist():
             return {}
-        root = etree.fromstring(archive.read(path))
+        root = parse_untrusted_xml(archive.read(path))
         relationships = {}
         for relationship in root.findall("pr:Relationship", self.NS):
             if relationship.get("TargetMode") == "External":
